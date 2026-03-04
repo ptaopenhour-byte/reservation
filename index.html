@@ -73,9 +73,6 @@
         /* 隱藏捲軸但保留功能，讓介面更乾淨 */
         .hide-scrollbar::-webkit-scrollbar { display: none; }
         .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-        /* 拖曳排序特效 */
-        .drag-over { border-color: #1cb0f6 !important; background-color: #f0f9ff !important; transform: scale(1.02); }
-        .dragging { opacity: 0.5; }
     </style>
 </head>
 <body class="bg-white font-sans text-duo-text selection:bg-duo-green selection:text-white">
@@ -121,12 +118,12 @@
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'cartreserver-app';
 
 
-        // 加入 order 欄位供排序使用
+        // 加入 order 屬性以預設順序
         const initialData = {
-            "Cart 8": { order: 0, type: "Chromebook", location: "Student Affairs Office", capacity: 30, schedule: {}, notes: "Elevator malfunction, please note" },
-            "Cart 4": { order: 1, type: "Chromebook", location: "Student Affairs Office", capacity: 20, schedule: {} },
-            "Cart 6": { order: 2, type: "Chromebook", location: "Subject Building", capacity: 22, notes: "Under maintenance (#04, #08)", schedule: {} },
-            "iPad Cart 1": { order: 3, type: "iPad", location: "Academic Affairs Office", capacity: 21, schedule: {} },
+            "Cart 8": { type: "Chromebook", location: "Student Affairs Office", capacity: 30, schedule: {}, notes: "Elevator malfunction, please note", order: 0 },
+            "Cart 4": { type: "Chromebook", location: "Student Affairs Office", capacity: 20, schedule: {}, order: 1 },
+            "Cart 6": { type: "Chromebook", location: "Subject Building", capacity: 22, notes: "Under maintenance (#04, #08)", schedule: {}, order: 2 },
+            "iPad Cart 1": { type: "iPad", location: "Academic Affairs Office", capacity: 21, schedule: {}, order: 3 },
         };
 
 
@@ -172,11 +169,8 @@
 
 
             const [currentView, setCurrentView] = useState('home');
-            
-            // 篩選器狀態
-            const [activeFilter, setActiveFilter] = useState('All'); // 類型篩選
-            const [locationFilter, setLocationFilter] = useState('All'); // 地點篩選
-            
+            const [activeFilter, setActiveFilter] = useState('All');
+            const [activeLocationFilter, setActiveLocationFilter] = useState('All'); // 新增地點過濾
             const [selectedCart, setSelectedCart] = useState(null);
             const [adminTab, setAdminTab] = useState('carts');
             
@@ -186,7 +180,7 @@
 
             const [selectedWeek, setSelectedWeek] = useState(1);
             const [allowSaturday, setAllowSaturday] = useState(false);
-            const [hasAutoSetWeek, setHasAutoSetWeek] = useState(false); 
+            const [hasAutoSetWeek, setHasAutoSetWeek] = useState(false);
             const currentDays = allowSaturday ? [...baseDays, "Saturday"] : baseDays;
 
 
@@ -211,11 +205,6 @@
             const [editBookForm, setEditBookForm] = useState({ name: '', email: '', classType: '', customClass: '' });
             const [editCartModal, setEditCartModal] = useState({ isOpen: false, cartName: null, data: null });
             const [printSelection, setPrintSelection] = useState([]);
-
-
-            // 拖曳排序狀態
-            const [draggedItem, setDraggedItem] = useState(null);
-            const [dragOverItem, setDragOverItem] = useState(null);
 
 
             useEffect(() => {
@@ -313,7 +302,6 @@
             }, []);
 
 
-            // 根據目前時間與開學日自動計算並跳轉到當前週次
             useEffect(() => {
                 if (firebaseReady && !hasAutoSetWeek) {
                     const now = new Date();
@@ -342,22 +330,40 @@
 
 
 
-            // 提取所有唯一的地點供篩選器使用
-            const uniqueLocations = ['All', ...new Set(Object.values(cartData).map(c => c.location).filter(Boolean))];
-
-
-            // 依據類型、地點與順序(order)篩選與排序設備
-            const filteredCarts = Object.entries(cartData)
-                .filter(([name, data]) => activeFilter === 'All' || data.type === activeFilter)
-                .filter(([name, data]) => locationFilter === 'All' || data.location === locationFilter)
-                .sort((a, b) => (a[1].order || 0) - (b[1].order || 0));
-            
-            // 後台全部設備列表 (依據 order 排序)
+            // 核心排序與過濾邏輯
             const sortedAllCarts = Object.entries(cartData).sort((a, b) => (a[1].order || 0) - (b[1].order || 0));
+            const filteredCarts = sortedAllCarts
+                .filter(([name, data]) => activeFilter === 'All' || data.type === activeFilter)
+                .filter(([name, data]) => activeLocationFilter === 'All' || data.location === activeLocationFilter);
+            
+            // 動態擷取所有唯一的所在地點
+            const locations = ['All', ...Array.from(new Set(Object.values(cartData).map(c => c.location).filter(Boolean)))];
+            
+            // 手動排序邏輯 (Admin 專用)
+            const moveCart = async (cartName, direction) => {
+                const sortedNames = sortedAllCarts.map(arr => arr[0]);
+                const idx = sortedNames.indexOf(cartName);
+                
+                if (direction === 'up' && idx > 0) {
+                    [sortedNames[idx - 1], sortedNames[idx]] = [sortedNames[idx], sortedNames[idx - 1]];
+                } else if (direction === 'down' && idx < sortedNames.length - 1) {
+                    [sortedNames[idx + 1], sortedNames[idx]] = [sortedNames[idx], sortedNames[idx + 1]];
+                } else {
+                    return; // 無法移動
+                }
+                
+                // 批次寫入新順序到 Firestore
+                for (let i = 0; i < sortedNames.length; i++) {
+                    const cName = sortedNames[i];
+                    if ((cartData[cName].order || 0) !== i) {
+                        await dbRefs.fb.setDoc(dbRefs.getDocRef('carts', cName), { order: i }, { merge: true });
+                    }
+                }
+            };
 
 
             const getIcon = (type) => {
-                if (type === 'Chromebook') return <div className="w-12 h-12 bg-duo-blue/10 rounded-2xl flex items-center justify-center shrink-0"><i className="fa-solid fa-laptop-chromebook text-duo-blue text-2xl"></i></div>;
+                if (type === 'Chromebook') return <div className="w-12 h-12 bg-duo-blue/10 rounded-2xl flex items-center justify-center shrink-0"><i className="fa-solid fa-laptop text-duo-blue text-2xl"></i></div>;
                 if (type === 'iPad') return <div className="w-12 h-12 bg-duo-green/10 rounded-2xl flex items-center justify-center shrink-0"><i className="fa-solid fa-tablet-screen-button text-duo-green text-2xl"></i></div>;
                 return <div className="w-12 h-12 bg-duo-yellow/10 rounded-2xl flex items-center justify-center shrink-0"><i className="fa-solid fa-desktop text-duo-yellow text-2xl"></i></div>;
             };
@@ -372,7 +378,6 @@
 
 
             const weeksArray = Array.from({ length: semesterConfig.totalWeeks }, (_, i) => i + 1);
-            
             const getWeekDateRange = (weekNum, includeSat) => {
                 const start = new Date(semesterConfig.startDate);
                 if (isNaN(start.getTime())) return "Invalid Date";
@@ -393,74 +398,6 @@
             };
 
 
-            // === 拖曳排序邏輯 (Drag and Drop) ===
-            const handleDragStart = (e, name) => {
-                setDraggedItem(name);
-                e.dataTransfer.effectAllowed = "move";
-                // Chrome需要這個來避免拖曳圖示變半透明失效
-                e.dataTransfer.setData("text/plain", name); 
-            };
-
-
-            const handleDragOver = (e, name) => {
-                e.preventDefault(); // 允許放下
-                if (draggedItem !== name) {
-                    setDragOverItem(name);
-                }
-            };
-
-
-            const handleDragLeave = (e) => {
-                e.preventDefault();
-                setDragOverItem(null);
-            };
-
-
-            const handleDrop = async (e, targetName) => {
-                e.preventDefault();
-                setDragOverItem(null);
-                
-                if (!draggedItem || draggedItem === targetName) {
-                    setDraggedItem(null);
-                    return;
-                }
-
-
-                // 複製一份排序過的陣列
-                const newArr = [...sortedAllCarts];
-                const draggedIdx = newArr.findIndex(c => c[0] === draggedItem);
-                const targetIdx = newArr.findIndex(c => c[0] === targetName);
-
-
-                // 在陣列中移動位置
-                const [removed] = newArr.splice(draggedIdx, 1);
-                newArr.splice(targetIdx, 0, removed);
-
-
-                // 更新每個項目的 order 並儲存到 Firebase
-                newArr.forEach(async (cart, index) => {
-                    if (cart[1].order !== index) {
-                        // Optimistic UI 更新 (先修改本地狀態讓畫面瞬間切換)
-                        setCartData(prev => ({
-                            ...prev,
-                            [cart[0]]: { ...prev[cart[0]], order: index }
-                        }));
-                        // 更新雲端
-                        await dbRefs.fb.setDoc(dbRefs.getDocRef('carts', cart[0]), { order: index }, { merge: true });
-                    }
-                });
-                
-                setDraggedItem(null);
-            };
-
-
-            const handleDragEnd = () => {
-                setDraggedItem(null);
-                setDragOverItem(null);
-            };
-
-
-            // === 系統設定與 Auth 邏輯 ===
             const handleSaturdayToggle = async (e) => {
                 const newVal = e.target.checked;
                 setAllowSaturday(newVal); 
@@ -556,7 +493,6 @@
             };
 
 
-            // === 預約邏輯 ===
             const handleSlotClick = (dayIdx, periodId, existingBooking) => {
                 if (periodId === 'lunch') return; 
                 setBookingModal({ isOpen: true, dayIdx, periodId, existingBooking, isEditing: false });
@@ -630,17 +566,11 @@
                 const formData = new FormData(e.target);
                 const oldName = editCartModal.cartName;
                 const newName = formData.get('name');
-                
-                // 賦予新設備 order (排在最後面)
-                const currentMaxOrder = Object.values(cartData).reduce((max, cart) => Math.max(max, cart.order || 0), -1);
-                
                 const newData = {
-                    type: formData.get('type'), 
-                    location: formData.get('location'), 
-                    capacity: parseInt(formData.get('capacity')), 
-                    notes: formData.get('notes'),
-                    order: oldName && cartData[oldName] ? cartData[oldName].order : currentMaxOrder + 1,
-                    schedule: oldName && cartData[oldName] ? cartData[oldName].schedule : {}
+                    type: formData.get('type'), location: formData.get('location'), capacity: parseInt(formData.get('capacity')), notes: formData.get('notes'),
+                    schedule: oldName && cartData[oldName] ? cartData[oldName].schedule : {},
+                    // 若是新設備，將 order 設為當前總數以排在最後面
+                    order: oldName && cartData[oldName] && cartData[oldName].order !== undefined ? cartData[oldName].order : Object.keys(cartData).length
                 };
 
 
@@ -663,7 +593,6 @@
             };
 
 
-            // 取得當前使用者的預約
             const getMyBookings = () => {
                 const myBookings = [];
                 if (!currentUser) return myBookings;
@@ -674,7 +603,14 @@
                             if (bookingInfo.ownerEmail === currentUser.email) {
                                 const match = slotId.match(/w(\d+)_d(\d+)_p(\w+)/);
                                 if (match) {
-                                    myBookings.push({ cartName, week: parseInt(match[1]), dayIdx: parseInt(match[2]), periodId: match[3], slotId, className: bookingInfo.className });
+                                    myBookings.push({
+                                        cartName,
+                                        week: parseInt(match[1]),
+                                        dayIdx: parseInt(match[2]),
+                                        periodId: match[3],
+                                        slotId,
+                                        className: bookingInfo.className
+                                    });
                                 }
                             }
                         });
@@ -742,7 +678,7 @@
             }
 
 
-            // ================= LOGIN SCREEN =================
+            // ================= LOGIN SCREEN (Duolingo Style) =================
             if (!currentUser && !isAdmin) {
                 return (
                     <div className="min-h-screen bg-duo-grayLight flex items-center justify-center p-4">
@@ -819,7 +755,7 @@
             }
 
 
-            // ================= MAIN APP =================
+            // ================= MAIN APP (Duolingo Style) =================
             return (
                 <div className="min-h-screen bg-[#ffffff]">
                     {/* Header */}
@@ -834,7 +770,8 @@
                                 <button onClick={() => setCurrentView('print')} className="px-4 py-2.5 bg-white border-2 border-duo-grayBorder text-gray-400 font-extrabold uppercase tracking-wider rounded-2xl shadow-[0_4px_0_0_#e5e5e5] hover:bg-gray-50 active:shadow-none active:translate-y-[4px] transition-all text-xs sm:text-sm">
                                     <i className="fa-solid fa-print sm:mr-1"></i> <span className="hidden sm:inline">Print</span>
                                 </button>
-                                
+
+
                                 <button onClick={() => setCurrentView('my-bookings')} className={`px-4 py-2.5 font-extrabold uppercase tracking-wider rounded-2xl transition-all text-xs sm:text-sm ${currentView === 'my-bookings' ? 'bg-duo-blue text-white shadow-[0_4px_0_0_#1899d6] active:shadow-none active:translate-y-[4px]' : 'bg-white border-2 border-duo-grayBorder text-duo-blue shadow-[0_4px_0_0_#e5e5e5] hover:bg-blue-50 active:shadow-none active:translate-y-[4px]'}`}>
                                     <i className="fa-solid fa-calendar-check sm:mr-1"></i> <span className="hidden sm:inline">My Bookings</span>
                                 </button>
@@ -846,6 +783,7 @@
                                     </button>
                                 )}
                                 
+                                {/* User Profile Pill */}
                                 <div className="flex items-center ml-2 border-2 border-duo-grayBorder rounded-2xl h-[44px] overflow-hidden bg-duo-grayLight">
                                     <div className="px-4 font-extrabold text-duo-blue text-sm flex items-center h-full">
                                         <i className={`fa-solid ${isAdmin ? 'fa-shield-halved text-duo-yellow' : 'fa-user'} mr-2`}></i>
@@ -893,71 +831,6 @@
                     {/* Main Content */}
                     <main className="max-w-7xl mx-auto px-4 py-8 no-print">
                         
-                        {/* --- View: Home --- */}
-                        {currentView === 'home' && (
-                            <div className="animate-[fadeIn_0.3s_ease-out]">
-                                <div className="mb-8 flex flex-col gap-4 border-b-2 border-duo-grayBorder pb-6">
-                                    <h2 className="text-3xl font-extrabold text-duo-text tracking-tight">Choose Equipment</h2>
-                                    
-                                    {/* 雙層篩選器：Type & Location */}
-                                    <div className="flex flex-col sm:flex-row gap-4">
-                                        {/* Type Filter */}
-                                        <div className="flex flex-col gap-2">
-                                            <span className="text-xs font-extrabold text-gray-400 uppercase tracking-wider pl-1">Type</span>
-                                            <div className="flex gap-2 overflow-x-auto hide-scrollbar pb-2">
-                                                {['All', 'Chromebook', 'iPad', 'PC Lab'].map(filter => (
-                                                    <button key={filter} onClick={() => setActiveFilter(filter)} className={`px-5 py-2.5 rounded-2xl font-extrabold uppercase tracking-wider text-sm transition-all whitespace-nowrap ${activeFilter === filter ? 'bg-duo-blue/10 text-duo-blue border-2 border-duo-blue shadow-[0_4px_0_0_#1899d6] translate-y-[-2px]' : 'bg-white text-gray-400 border-2 border-duo-grayBorder hover:bg-gray-50'}`}>
-                                                        {filter}
-                                                    </button>
-                                                ))}
-                                            </div>
-                                        </div>
-                                        
-                                        {/* 新增：Location Filter */}
-                                        <div className="flex flex-col gap-2 sm:ml-4 sm:pl-4 sm:border-l-2 sm:border-duo-grayBorder">
-                                            <span className="text-xs font-extrabold text-gray-400 uppercase tracking-wider pl-1">Location</span>
-                                            <div className="flex gap-2 overflow-x-auto hide-scrollbar pb-2">
-                                                {uniqueLocations.map(loc => (
-                                                    <button key={loc} onClick={() => setLocationFilter(loc)} className={`px-5 py-2.5 rounded-2xl font-extrabold uppercase tracking-wider text-sm transition-all whitespace-nowrap ${locationFilter === loc ? 'bg-duo-green/10 text-duo-green border-2 border-duo-green shadow-[0_4px_0_0_#58a700] translate-y-[-2px]' : 'bg-white text-gray-400 border-2 border-duo-grayBorder hover:bg-gray-50'}`}>
-                                                        {loc}
-                                                    </button>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-
-
-                                {/* Empty State when filtered */}
-                                {filteredCarts.length === 0 && (
-                                    <div className="text-center py-12 text-gray-400 font-bold">
-                                        <i className="fa-solid fa-ghost text-6xl mb-4 opacity-50"></i>
-                                        <p>No equipment found matching your filters.</p>
-                                    </div>
-                                )}
-
-
-                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                                    {filteredCarts.map(([name, data]) => (
-                                        <div key={name} onClick={() => { setSelectedCart(name); setCurrentView('schedule'); }} className="bg-white rounded-3xl border-2 border-duo-grayBorder shadow-duo-card p-6 hover:-translate-y-1 hover:shadow-[0_8px_0_0_#e5e5e5] active:translate-y-[4px] active:shadow-none cursor-pointer transition-all flex flex-col group">
-                                            <div className="flex justify-between items-start mb-4">
-                                                {getIcon(data.type)}
-                                                <span className="bg-duo-grayLight text-gray-500 text-xs px-3 py-1.5 rounded-xl font-extrabold border-2 border-duo-grayBorder uppercase tracking-wider">{data.capacity} Devices</span>
-                                            </div>
-                                            <h3 className="text-2xl font-extrabold text-duo-text mb-2 group-hover:text-duo-blue transition-colors">{name}</h3>
-                                            <div className="flex items-center text-sm font-bold text-gray-400 mb-4"><i className="fa-solid fa-location-dot mr-2"></i> {data.location}</div>
-                                            {data.notes && (
-                                                <div className="mt-auto flex items-start text-xs text-duo-red bg-red-50 p-3 rounded-xl border-2 border-red-100 font-bold">
-                                                    <i className="fa-solid fa-circle-exclamation mt-0.5 mr-2"></i><span>{data.notes}</span>
-                                                </div>
-                                            )}
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-                        )}
-
-
                         {/* --- View: My Bookings --- */}
                         {currentView === 'my-bookings' && (
                             <div className="animate-[fadeIn_0.3s_ease-out]">
@@ -1023,6 +896,56 @@
                                         })}
                                     </div>
                                 )}
+                            </div>
+                        )}
+
+
+                        {/* --- View: Home --- */}
+                        {currentView === 'home' && (
+                            <div className="animate-[fadeIn_0.3s_ease-out]">
+                                <div className="mb-8 flex flex-col md:flex-row md:items-center justify-between gap-4 border-b-2 border-duo-grayBorder pb-6">
+                                    <div className="flex-1">
+                                        <h2 className="text-3xl font-extrabold text-duo-text tracking-tight">Choose Equipment</h2>
+                                    </div>
+                                    <div className="flex flex-wrap items-center gap-3">
+                                        <div className="flex gap-2 overflow-x-auto hide-scrollbar py-2">
+                                            {['All', 'Chromebook', 'iPad', 'PC Lab'].map(filter => (
+                                                <button key={filter} onClick={() => setActiveFilter(filter)} className={`px-5 py-2.5 rounded-2xl font-extrabold uppercase tracking-wider text-sm transition-all whitespace-nowrap ${activeFilter === filter ? 'bg-duo-blue/10 text-duo-blue border-2 border-duo-blue' : 'bg-white text-gray-400 border-2 border-duo-grayBorder hover:bg-gray-50'}`}>
+                                                    {filter}
+                                                </button>
+                                            ))}
+                                        </div>
+                                        
+                                        {/* Location Filter Dropdown */}
+                                        <div className="relative border-l-2 border-duo-grayBorder pl-3">
+                                            <select value={activeLocationFilter} onChange={e => setActiveLocationFilter(e.target.value)} className="appearance-none bg-white border-2 border-duo-grayBorder rounded-2xl pl-4 pr-10 py-2.5 font-extrabold text-gray-500 hover:text-duo-text outline-none cursor-pointer hover:bg-gray-50 transition-colors text-sm uppercase tracking-wider max-w-[200px] truncate">
+                                                {locations.map(loc => (
+                                                    <option key={loc} value={loc}>{loc === 'All' ? '📍 All Locations' : loc}</option>
+                                                ))}
+                                            </select>
+                                            <i className="fa-solid fa-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none text-sm"></i>
+                                        </div>
+                                    </div>
+                                </div>
+
+
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                                    {filteredCarts.map(([name, data]) => (
+                                        <div key={name} onClick={() => { setSelectedCart(name); setCurrentView('schedule'); }} className="bg-white rounded-3xl border-2 border-duo-grayBorder shadow-duo-card p-6 hover:-translate-y-1 hover:shadow-[0_8px_0_0_#e5e5e5] active:translate-y-[4px] active:shadow-none cursor-pointer transition-all flex flex-col group">
+                                            <div className="flex justify-between items-start mb-4">
+                                                {getIcon(data.type)}
+                                                <span className="bg-duo-grayLight text-gray-500 text-xs px-3 py-1.5 rounded-xl font-extrabold border-2 border-duo-grayBorder uppercase tracking-wider">{data.capacity} Devices</span>
+                                            </div>
+                                            <h3 className="text-2xl font-extrabold text-duo-text mb-2 group-hover:text-duo-blue transition-colors">{name}</h3>
+                                            <div className="flex items-center text-sm font-bold text-gray-400 mb-4"><i className="fa-solid fa-location-dot mr-2"></i> {data.location}</div>
+                                            {data.notes && (
+                                                <div className="mt-auto flex items-start text-xs text-duo-red bg-red-50 p-3 rounded-xl border-2 border-red-100 font-bold">
+                                                    <i className="fa-solid fa-circle-exclamation mt-0.5 mr-2"></i><span>{data.notes}</span>
+                                                </div>
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
                             </div>
                         )}
 
@@ -1136,53 +1059,33 @@
 
 
                                 <div className="p-8">
-                                    {/* 新增拖曳排序功能的設備列表 */}
                                     {adminTab === 'carts' && (
                                         <div>
                                             <div className="flex flex-wrap justify-between items-center mb-6 gap-4 border-b-2 border-duo-grayBorder pb-4">
-                                                <div>
-                                                    <h3 className="text-2xl font-extrabold text-duo-text">Equipment List</h3>
-                                                    <p className="text-gray-400 font-bold text-sm mt-1">Drag the <i className="fa-solid fa-grip-vertical mx-1"></i> handle to reorder carts.</p>
-                                                </div>
+                                                <h3 className="text-2xl font-extrabold text-duo-text">Equipment List</h3>
                                                 <button onClick={() => setEditCartModal({ isOpen: true, cartName: null, data: { type: 'Chromebook', capacity: 30, location: '', notes: '' } })} className="px-5 py-3 bg-duo-green text-white font-extrabold uppercase tracking-wider text-sm rounded-2xl shadow-duo-green active:shadow-none active:translate-y-[4px] transition-all"><i className="fa-solid fa-plus mr-2"></i> Add New</button>
                                             </div>
                                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                                {sortedAllCarts.map(([name, data]) => {
-                                                    const isDragging = draggedItem === name;
-                                                    const isDragOver = dragOverItem === name;
-                                                    
-                                                    return (
-                                                        <div 
-                                                            key={name} 
-                                                            draggable
-                                                            onDragStart={(e) => handleDragStart(e, name)}
-                                                            onDragOver={(e) => handleDragOver(e, name)}
-                                                            onDragLeave={handleDragLeave}
-                                                            onDrop={(e) => handleDrop(e, name)}
-                                                            onDragEnd={handleDragEnd}
-                                                            className={`border-2 rounded-2xl p-4 flex items-center justify-between bg-white transition-all duration-200 ${
-                                                                isDragging ? 'dragging shadow-none border-dashed border-gray-400' : 
-                                                                isDragOver ? 'drag-over' : 'border-duo-grayBorder hover:border-duo-blue'
-                                                            }`}
-                                                        >
-                                                            <div className="flex items-center gap-4 pointer-events-none">
-                                                                {/* 拖曳把手 */}
-                                                                <div className="cursor-grab active:cursor-grabbing text-gray-300 hover:text-duo-blue p-2 pointer-events-auto">
-                                                                    <i className="fa-solid fa-grip-vertical text-xl"></i>
-                                                                </div>
-                                                                {getIcon(data.type)}
-                                                                <div>
-                                                                    <div className="font-extrabold text-lg text-duo-text leading-none">{name}</div>
-                                                                    <div className="text-sm font-bold text-gray-400 mt-1">{data.capacity} pts • {data.location}</div>
-                                                                </div>
+                                                {sortedAllCarts.map(([name, data], index) => (
+                                                    <div key={name} className="border-2 border-duo-grayBorder rounded-2xl p-3 sm:p-4 flex items-center justify-between bg-white hover:border-duo-blue transition-colors">
+                                                        <div className="flex items-center gap-3 sm:gap-4">
+                                                            {/* 手動排序箭頭區塊 */}
+                                                            <div className="flex flex-col gap-1 pr-3 border-r-2 border-duo-grayBorder shrink-0">
+                                                                <button onClick={() => moveCart(name, 'up')} disabled={index === 0} className="text-gray-300 hover:text-duo-blue disabled:opacity-20 disabled:hover:text-gray-300 transition-colors cursor-pointer"><i className="fa-solid fa-caret-up text-2xl leading-none"></i></button>
+                                                                <button onClick={() => moveCart(name, 'down')} disabled={index === sortedAllCarts.length - 1} className="text-gray-300 hover:text-duo-blue disabled:opacity-20 disabled:hover:text-gray-300 transition-colors cursor-pointer"><i className="fa-solid fa-caret-down text-2xl leading-none"></i></button>
                                                             </div>
-                                                            <div className="flex gap-2">
-                                                                <button onClick={() => setEditCartModal({ isOpen: true, cartName: name, data: data })} className="w-10 h-10 bg-white border-2 border-duo-grayBorder text-duo-blue rounded-xl shadow-duo-gray active:shadow-none active:translate-y-[4px] flex items-center justify-center transition-all hover:bg-blue-50" title="Edit"><i className="fa-solid fa-pen"></i></button>
-                                                                <button onClick={() => deleteCart(name)} className="w-10 h-10 bg-white border-2 border-duo-grayBorder text-duo-red rounded-xl shadow-duo-gray active:shadow-none active:translate-y-[4px] flex items-center justify-center transition-all hover:bg-red-50" title="Delete"><i className="fa-solid fa-trash"></i></button>
+                                                            {getIcon(data.type)}
+                                                            <div className="truncate">
+                                                                <div className="font-extrabold text-lg text-duo-text leading-none truncate">{name}</div>
+                                                                <div className="text-sm font-bold text-gray-400 mt-1 truncate">{data.capacity} pts • {data.location}</div>
                                                             </div>
                                                         </div>
-                                                    );
-                                                })}
+                                                        <div className="flex gap-2 ml-2 shrink-0">
+                                                            <button onClick={() => setEditCartModal({ isOpen: true, cartName: name, data: data })} className="w-10 h-10 bg-white border-2 border-duo-grayBorder text-duo-blue rounded-xl shadow-duo-gray active:shadow-none active:translate-y-[4px] flex items-center justify-center transition-all" title="Edit"><i className="fa-solid fa-pen"></i></button>
+                                                            <button onClick={() => deleteCart(name)} className="w-10 h-10 bg-white border-2 border-duo-grayBorder text-duo-red rounded-xl shadow-duo-gray active:shadow-none active:translate-y-[4px] flex items-center justify-center transition-all" title="Delete"><i className="fa-solid fa-trash"></i></button>
+                                                        </div>
+                                                    </div>
+                                                ))}
                                             </div>
                                         </div>
                                     )}
@@ -1203,8 +1106,8 @@
                                                                 <td className="p-4 font-bold text-gray-500">{user.email}</td>
                                                                 <td className="p-4 font-bold text-gray-500">{user.defaultClass === 'Other (Specify)' ? user.customClass : user.defaultClass}</td>
                                                                 <td className="p-4 flex justify-end gap-2">
-                                                                    <button onClick={() => resetUserPassword(user.email)} className="px-3 py-2 bg-white border-2 border-duo-grayBorder text-duo-yellowDark rounded-xl shadow-duo-gray active:shadow-none active:translate-y-[4px] text-xs font-extrabold uppercase transition-all hover:bg-yellow-50"><i className="fa-solid fa-key mr-1"></i> Pwd</button>
-                                                                    <button onClick={() => deleteUser(user.email)} className="px-3 py-2 bg-white border-2 border-duo-grayBorder text-duo-red rounded-xl shadow-duo-gray active:shadow-none active:translate-y-[4px] text-xs font-extrabold uppercase transition-all hover:bg-red-50"><i className="fa-solid fa-trash mr-1"></i> Del</button>
+                                                                    <button onClick={() => resetUserPassword(user.email)} className="px-3 py-2 bg-white border-2 border-duo-grayBorder text-duo-yellowDark rounded-xl shadow-duo-gray active:shadow-none active:translate-y-[4px] text-xs font-extrabold uppercase transition-all"><i className="fa-solid fa-key mr-1"></i> Pwd</button>
+                                                                    <button onClick={() => deleteUser(user.email)} className="px-3 py-2 bg-white border-2 border-duo-grayBorder text-duo-red rounded-xl shadow-duo-gray active:shadow-none active:translate-y-[4px] text-xs font-extrabold uppercase transition-all"><i className="fa-solid fa-trash mr-1"></i> Del</button>
                                                                 </td>
                                                             </tr>
                                                         ))}
@@ -1251,7 +1154,7 @@
                                                     <form onSubmit={handleSemesterConfigSave} className="space-y-4">
                                                         <div><label className="block text-xs font-extrabold text-gray-500 uppercase tracking-wider mb-2">Start Date (Week 1)</label><input required type="date" value={tempSemesterConfig.startDate} onChange={e => setTempSemesterConfig({...tempSemesterConfig, startDate: e.target.value})} className="w-full px-4 py-3 bg-white border-2 border-duo-grayBorder rounded-xl focus:border-duo-blue outline-none font-bold text-duo-text" /></div>
                                                         <div><label className="block text-xs font-extrabold text-gray-500 uppercase tracking-wider mb-2">Total Weeks</label><input required type="number" min="1" max="52" value={tempSemesterConfig.totalWeeks} onChange={e => setTempSemesterConfig({...tempSemesterConfig, totalWeeks: Number(e.target.value)})} className="w-full px-4 py-3 bg-white border-2 border-duo-grayBorder rounded-xl focus:border-duo-blue outline-none font-bold text-duo-text" /></div>
-                                                        <button type="submit" className="w-full mt-2 bg-duo-green text-white font-extrabold uppercase py-3 rounded-2xl shadow-duo-green active:shadow-none active:translate-y-[4px] transition-all tracking-wider hover:bg-[#46a302]">Save Config</button>
+                                                        <button type="submit" className="w-full mt-2 bg-duo-green text-white font-extrabold uppercase py-3 rounded-2xl shadow-duo-green active:shadow-none active:translate-y-[4px] transition-all tracking-wider">Save Config</button>
                                                     </form>
                                                 </div>
 
@@ -1259,7 +1162,7 @@
                                                 <h3 className="text-2xl font-extrabold text-duo-red mb-6 border-b-2 border-duo-grayBorder pb-4"><i className="fa-solid fa-skull mr-2"></i> Danger Zone</h3>
                                                 <div className="bg-red-50 border-2 border-red-200 rounded-[2rem] p-6">
                                                     <p className="text-sm font-bold text-duo-red mb-4">Click below to wipe all booking records in the system. Use at the start of a new semester. Cannot be undone!</p>
-                                                    <button onClick={handleClearSemesterData} className="w-full bg-duo-red text-white font-extrabold uppercase py-3 rounded-2xl shadow-duo-red active:shadow-none active:translate-y-[4px] transition-all tracking-wider hover:bg-red-600">
+                                                    <button onClick={handleClearSemesterData} className="w-full bg-duo-red text-white font-extrabold uppercase py-3 rounded-2xl shadow-duo-red active:shadow-none active:translate-y-[4px] transition-all tracking-wider">
                                                         <i className="fa-solid fa-bomb mr-2"></i> Clear Bookings
                                                     </button>
                                                 </div>
@@ -1291,7 +1194,7 @@
                                 <p className="font-bold text-gray-500 mb-8 border-b-2 border-duo-grayBorder pb-4">Week selected: <span className="text-duo-blue font-extrabold px-2 py-1 bg-blue-50 rounded-lg">Week {selectedWeek}</span></p>
                                 
                                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 mb-8">
-                                    {sortedAllCarts.map(([name]) => {
+                                    {sortedAllCarts.map(([name, data]) => {
                                         const isSelected = printSelection.includes(name);
                                         return (
                                             <div key={name} onClick={() => setPrintSelection(prev => isSelected ? prev.filter(n => n !== name) : [...prev, name])} 
@@ -1303,7 +1206,7 @@
                                     })}
                                 </div>
                                 <div className="flex justify-end gap-4">
-                                    <button onClick={() => window.print()} disabled={printSelection.length===0} className="px-8 py-4 bg-duo-blue text-white font-extrabold uppercase tracking-wider rounded-2xl shadow-[0_4px_0_0_#1899d6] hover:bg-[#1899d6] active:shadow-none active:translate-y-[4px] disabled:opacity-50 disabled:cursor-not-allowed transition-all text-lg">
+                                    <button onClick={() => window.print()} disabled={printSelection.length===0} className="px-8 py-4 bg-duo-blue text-white font-extrabold uppercase tracking-wider rounded-2xl shadow-[0_4px_0_0_#1899d6] active:shadow-none active:translate-y-[4px] disabled:opacity-50 disabled:cursor-not-allowed transition-all text-lg">
                                         Start Printing ({printSelection.length})
                                     </button>
                                 </div>
@@ -1321,7 +1224,17 @@
                                     <p className="text-sm mt-1">Week {selectedWeek} ( {getWeekDateRange(selectedWeek, allowSaturday)} )</p>
                                 </div>
                                 <table className="w-full">
-                                    <thead><tr><th className="col-period">Period</th>{currentDays.map((d, dayIdx) => <th key={d}>{d}<br/><span style={{fontSize:'12px', fontWeight:'normal', color:'#666'}}>{getDateForDayIdx(selectedWeek, dayIdx)}</span></th>)}</tr></thead>
+                                    <thead>
+                                        <tr>
+                                            <th className="col-period">Period</th>
+                                            {currentDays.map((d, dayIdx) => (
+                                                <th key={d}>
+                                                    {d}<br/>
+                                                    <span style={{fontSize:'12px', fontWeight:'normal', color:'#666'}}>{getDateForDayIdx(selectedWeek, dayIdx)}</span>
+                                                </th>
+                                            ))}
+                                        </tr>
+                                    </thead>
                                     <tbody>
                                         {periods.map(period => (
                                             <tr key={period.id}>
@@ -1366,8 +1279,8 @@
                                                 <div><label className="block text-xs font-extrabold text-gray-400 uppercase tracking-wider mb-1">Class/Dept</label><select value={editBookForm.classType} onChange={e => setEditBookForm({...editBookForm, classType: e.target.value})} className="w-full px-4 py-3 bg-white border-2 border-duo-grayBorder rounded-xl focus:border-duo-blue outline-none font-bold">{classOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}</select></div>
                                                 {editBookForm.classType === 'Other (Specify)' && <input type="text" value={editBookForm.customClass} onChange={e => setEditBookForm({...editBookForm, customClass: e.target.value})} placeholder="Specify" className="w-full px-4 py-3 bg-white border-2 border-duo-grayBorder rounded-xl focus:border-duo-blue outline-none font-bold" />}
                                                 <div className="flex gap-3 pt-4 border-t-2 border-duo-grayBorder mt-4">
-                                                    <button onClick={() => setBookingModal(prev => ({...prev, isEditing: false}))} className="flex-1 bg-white border-2 border-duo-grayBorder text-gray-400 font-extrabold uppercase py-3 rounded-2xl shadow-duo-gray active:shadow-none active:translate-y-[4px] hover:bg-gray-50 transition-all">Cancel</button>
-                                                    <button onClick={updateBooking} className="flex-1 bg-duo-green text-white font-extrabold uppercase py-3 rounded-2xl shadow-duo-green active:shadow-none active:translate-y-[4px] hover:bg-[#46a302] transition-all">Save</button>
+                                                    <button onClick={() => setBookingModal(prev => ({...prev, isEditing: false}))} className="flex-1 bg-white border-2 border-duo-grayBorder text-gray-400 font-extrabold uppercase py-3 rounded-2xl shadow-duo-gray active:shadow-none active:translate-y-[4px] transition-all">Cancel</button>
+                                                    <button onClick={updateBooking} className="flex-1 bg-duo-green text-white font-extrabold uppercase py-3 rounded-2xl shadow-duo-green active:shadow-none active:translate-y-[4px] transition-all">Save</button>
                                                 </div>
                                             </div>
                                         ) : (
@@ -1380,8 +1293,8 @@
                                                 
                                                 {(isAdmin || bookingModal.existingBooking.ownerEmail === currentUser.email) ? (
                                                     <div className="flex gap-3">
-                                                        {isAdmin && <button onClick={handleEditClick} className="flex-1 bg-white border-2 border-duo-grayBorder text-duo-blue font-extrabold uppercase py-3 rounded-2xl shadow-duo-gray active:shadow-none active:translate-y-[4px] hover:bg-blue-50 transition-all"><i className="fa-solid fa-pen"></i></button>}
-                                                        <button onClick={cancelBooking} className="flex-[2] bg-duo-red text-white font-extrabold uppercase py-3 rounded-2xl shadow-[0_4px_0_0_#ea2b2b] hover:bg-red-600 active:shadow-none active:translate-y-[4px] transition-all">Remove</button>
+                                                        {isAdmin && <button onClick={handleEditClick} className="flex-1 bg-white border-2 border-duo-grayBorder text-duo-blue font-extrabold uppercase py-3 rounded-2xl shadow-duo-gray active:shadow-none active:translate-y-[4px] transition-all"><i className="fa-solid fa-pen"></i></button>}
+                                                        <button onClick={cancelBooking} className="flex-[2] bg-duo-red text-white font-extrabold uppercase py-3 rounded-2xl shadow-[0_4px_0_0_#ea2b2b] active:shadow-none active:translate-y-[4px] transition-all">Remove</button>
                                                     </div>
                                                 ) : (
                                                     <div className="p-4 bg-duo-grayLight border-2 border-duo-grayBorder rounded-2xl text-sm text-gray-500 font-bold flex flex-col items-center">
@@ -1396,8 +1309,8 @@
                                             <div><label className="block text-xs font-extrabold text-gray-400 uppercase tracking-wider mb-1">Class/Dept</label><select value={bookForm.classType} onChange={e => setBookForm({...bookForm, classType: e.target.value})} className="w-full px-4 py-3 bg-white border-2 border-duo-grayBorder rounded-xl focus:border-duo-blue outline-none font-bold text-duo-text">{classOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}</select></div>
                                             {bookForm.classType === 'Other (Specify)' && <input type="text" value={bookForm.customClass} onChange={e => setBookForm({...bookForm, customClass: e.target.value})} placeholder="Specify Department" className="w-full px-4 py-3 bg-white border-2 border-duo-grayBorder rounded-xl focus:border-duo-blue outline-none font-bold text-duo-text" />}
                                             <div className="flex gap-3 pt-6">
-                                                <button onClick={() => setBookingModal({ isOpen: false })} className="flex-1 bg-white border-2 border-duo-grayBorder text-gray-400 font-extrabold uppercase py-4 rounded-2xl shadow-duo-gray active:shadow-none active:translate-y-[4px] hover:bg-gray-50 transition-all tracking-wider">Cancel</button>
-                                                <button onClick={submitBooking} className="flex-[2] bg-duo-green text-white font-extrabold uppercase py-4 rounded-2xl shadow-[0_4px_0_0_#58a700] hover:bg-[#46a302] active:shadow-none active:translate-y-[4px] transition-all tracking-wider">Confirm</button>
+                                                <button onClick={() => setBookingModal({ isOpen: false })} className="flex-1 bg-white border-2 border-duo-grayBorder text-gray-400 font-extrabold uppercase py-4 rounded-2xl shadow-duo-gray active:shadow-none active:translate-y-[4px] transition-all tracking-wider">Cancel</button>
+                                                <button onClick={submitBooking} className="flex-[2] bg-duo-green text-white font-extrabold uppercase py-4 rounded-2xl shadow-[0_4px_0_0_#58a700] active:shadow-none active:translate-y-[4px] transition-all tracking-wider">Confirm</button>
                                             </div>
                                         </div>
                                     )}
@@ -1413,19 +1326,19 @@
                             <div className="bg-white rounded-[2rem] border-2 border-duo-grayBorder shadow-2xl w-full max-w-lg my-8 animate-[fadeIn_0.15s_ease-out] overflow-hidden">
                                 <div className="p-6 border-b-2 border-duo-grayBorder bg-duo-grayLight flex justify-between items-center">
                                     <h3 className="font-extrabold text-xl text-duo-text"><i className="fa-solid fa-cube text-duo-blue mr-2"></i>{editCartModal.cartName ? 'Edit Equipment' : 'Add Equipment'}</h3>
-                                    <button onClick={() => setEditCartModal({ isOpen: false, cartName: null, data: null })} className="w-8 h-8 bg-white border-2 border-duo-grayBorder rounded-full text-gray-400 hover:text-duo-text hover:bg-gray-100 transition-colors flex items-center justify-center"><i className="fa-solid fa-times"></i></button>
+                                    <button onClick={() => setEditCartModal({ isOpen: false, cartName: null, data: null })} className="w-8 h-8 bg-white border-2 border-duo-grayBorder rounded-full text-gray-400 hover:text-duo-text transition-colors flex items-center justify-center"><i className="fa-solid fa-times"></i></button>
                                 </div>
                                 <form onSubmit={saveCartEdit} className="p-6 space-y-5">
-                                    <div><label className="block text-xs font-extrabold text-gray-400 uppercase tracking-wider mb-1">Name</label><input required name="name" defaultValue={editCartModal.cartName || ''} placeholder="e.g., Cart 15" className="w-full px-4 py-3 bg-white border-2 border-duo-grayBorder rounded-xl focus:border-duo-blue outline-none font-bold text-duo-text" /></div>
+                                    <div><label className="block text-xs font-extrabold text-gray-400 uppercase tracking-wider mb-1">Name</label><input required name="name" defaultValue={editCartModal.cartName || ''} placeholder="e.g., Cart 15" className="w-full px-4 py-3 bg-white border-2 border-duo-grayBorder rounded-xl focus:border-duo-blue outline-none font-bold" /></div>
                                     <div className="grid grid-cols-2 gap-4">
-                                        <div><label className="block text-xs font-extrabold text-gray-400 uppercase tracking-wider mb-1">Type</label><select name="type" defaultValue={editCartModal.data?.type || 'Chromebook'} className="w-full px-4 py-3 bg-white border-2 border-duo-grayBorder rounded-xl focus:border-duo-blue outline-none font-bold text-duo-text"><option value="Chromebook">Chromebook</option><option value="iPad">iPad</option><option value="PC Lab">PC Lab</option></select></div>
-                                        <div><label className="block text-xs font-extrabold text-gray-400 uppercase tracking-wider mb-1">Capacity</label><input required type="number" name="capacity" defaultValue={editCartModal.data?.capacity || 30} min="1" className="w-full px-4 py-3 bg-white border-2 border-duo-grayBorder rounded-xl focus:border-duo-blue outline-none font-bold text-duo-text" /></div>
+                                        <div><label className="block text-xs font-extrabold text-gray-400 uppercase tracking-wider mb-1">Type</label><select name="type" defaultValue={editCartModal.data?.type || 'Chromebook'} className="w-full px-4 py-3 bg-white border-2 border-duo-grayBorder rounded-xl focus:border-duo-blue outline-none font-bold"><option value="Chromebook">Chromebook</option><option value="iPad">iPad</option><option value="PC Lab">PC Lab</option></select></div>
+                                        <div><label className="block text-xs font-extrabold text-gray-400 uppercase tracking-wider mb-1">Capacity</label><input required type="number" name="capacity" defaultValue={editCartModal.data?.capacity || 30} min="1" className="w-full px-4 py-3 bg-white border-2 border-duo-grayBorder rounded-xl focus:border-duo-blue outline-none font-bold" /></div>
                                     </div>
-                                    <div><label className="block text-xs font-extrabold text-gray-400 uppercase tracking-wider mb-1">Location</label><input required name="location" defaultValue={editCartModal.data?.location || ''} placeholder="e.g., SAO" className="w-full px-4 py-3 bg-white border-2 border-duo-grayBorder rounded-xl focus:border-duo-blue outline-none font-bold text-duo-text" /></div>
-                                    <div><label className="block text-xs font-extrabold text-gray-400 uppercase tracking-wider mb-1">Notes (Optional)</label><textarea name="notes" defaultValue={editCartModal.data?.notes || ''} placeholder="e.g., #04 under maintenance" rows="2" className="w-full px-4 py-3 bg-white border-2 border-duo-grayBorder rounded-xl focus:border-duo-blue outline-none font-bold text-duo-text resize-none" /></div>
+                                    <div><label className="block text-xs font-extrabold text-gray-400 uppercase tracking-wider mb-1">Location</label><input required name="location" defaultValue={editCartModal.data?.location || ''} placeholder="e.g., SAO" className="w-full px-4 py-3 bg-white border-2 border-duo-grayBorder rounded-xl focus:border-duo-blue outline-none font-bold" /></div>
+                                    <div><label className="block text-xs font-extrabold text-gray-400 uppercase tracking-wider mb-1">Notes (Optional)</label><textarea name="notes" defaultValue={editCartModal.data?.notes || ''} placeholder="e.g., #04 under maintenance" rows="2" className="w-full px-4 py-3 bg-white border-2 border-duo-grayBorder rounded-xl focus:border-duo-blue outline-none font-bold resize-none" /></div>
                                     <div className="flex gap-4 pt-4 border-t-2 border-duo-grayBorder">
-                                        <button type="button" onClick={() => setEditCartModal({ isOpen: false, cartName: null, data: null })} className="flex-1 bg-white border-2 border-duo-grayBorder text-gray-400 font-extrabold uppercase py-3 rounded-2xl shadow-duo-gray active:shadow-none active:translate-y-[4px] hover:bg-gray-50 transition-all">Cancel</button>
-                                        <button type="submit" className="flex-[2] bg-duo-green text-white font-extrabold uppercase py-3 rounded-2xl shadow-duo-green hover:bg-[#46a302] active:shadow-none active:translate-y-[4px] transition-all">Save</button>
+                                        <button type="button" onClick={() => setEditCartModal({ isOpen: false, cartName: null, data: null })} className="flex-1 bg-white border-2 border-duo-grayBorder text-gray-400 font-extrabold uppercase py-3 rounded-2xl shadow-duo-gray active:shadow-none active:translate-y-[4px] transition-all">Cancel</button>
+                                        <button type="submit" className="flex-[2] bg-duo-green text-white font-extrabold uppercase py-3 rounded-2xl shadow-duo-green active:shadow-none active:translate-y-[4px] transition-all">Save</button>
                                     </div>
                                 </form>
                             </div>
@@ -1441,7 +1354,7 @@
                                     <i className="fa-solid fa-bell text-4xl"></i>
                                 </div>
                                 <p className="text-duo-text font-bold mb-8 whitespace-pre-line text-lg leading-relaxed">{alertModal.message}</p>
-                                <button onClick={() => setAlertModal({ isOpen: false, message: '' })} className="w-full bg-duo-blue text-white font-extrabold uppercase py-4 rounded-2xl shadow-duo-blue hover:bg-[#1899d6] active:shadow-none active:translate-y-[4px] transition-all tracking-wider text-lg">Got it!</button>
+                                <button onClick={() => setAlertModal({ isOpen: false, message: '' })} className="w-full bg-duo-blue text-white font-extrabold uppercase py-4 rounded-2xl shadow-duo-blue active:shadow-none active:translate-y-[4px] transition-all tracking-wider text-lg">Got it!</button>
                             </div>
                         </div>
                     )}
@@ -1456,8 +1369,8 @@
                                 </div>
                                 <p className="text-duo-text font-bold mb-8 whitespace-pre-line text-lg leading-relaxed">{confirmModal.message}</p>
                                 <div className="flex gap-4">
-                                    <button onClick={() => setConfirmModal({ isOpen: false, message: '', onConfirm: null })} className="flex-1 bg-white border-2 border-duo-grayBorder text-gray-400 font-extrabold uppercase py-4 rounded-2xl shadow-duo-gray hover:bg-gray-50 active:shadow-none active:translate-y-[4px] transition-all tracking-wider text-sm">Cancel</button>
-                                    <button onClick={() => { confirmModal.onConfirm(); setConfirmModal({ isOpen: false, message: '', onConfirm: null }); }} className="flex-1 bg-duo-red text-white font-extrabold uppercase py-4 rounded-2xl shadow-duo-red hover:bg-red-600 active:shadow-none active:translate-y-[4px] transition-all tracking-wider text-sm">Confirm</button>
+                                    <button onClick={() => setConfirmModal({ isOpen: false, message: '', onConfirm: null })} className="flex-1 bg-white border-2 border-duo-grayBorder text-gray-400 font-extrabold uppercase py-4 rounded-2xl shadow-duo-gray active:shadow-none active:translate-y-[4px] transition-all tracking-wider text-sm">Cancel</button>
+                                    <button onClick={() => { confirmModal.onConfirm(); setConfirmModal({ isOpen: false, message: '', onConfirm: null }); }} className="flex-1 bg-duo-red text-white font-extrabold uppercase py-4 rounded-2xl shadow-duo-red active:shadow-none active:translate-y-[4px] transition-all tracking-wider text-sm">Confirm</button>
                                 </div>
                             </div>
                         </div>
