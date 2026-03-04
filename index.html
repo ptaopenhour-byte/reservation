@@ -57,24 +57,52 @@
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
 
-    <style>
+       <style>
         @media print {
-            @page { size: landscape; margin: 15mm; }
-            body { background: white; }
+            /* 設定為 A4 橫式，邊緣留 1 公分最安全也最好看 */
+            @page { size: A4 landscape; margin: 10mm; }
+            body { background: white; margin: 0; padding: 0; }
             .no-print { display: none !important; }
-            .print-only { display: block !important; }
-            table { width: 100%; border-collapse: collapse; table-layout: fixed; }
-            th, td { border: 1px solid #000; padding: 6px; text-align: center; font-family: sans-serif; }
+            
+            /* 【重點】讓每一頁變成一個彈性容器，高度設定為紙張高度的 96% */
+            .print-only { display: block !important; width: 100%; }
+            .page-break { 
+                page-break-after: always; 
+                height: 96vh; 
+                display: flex; 
+                flex-direction: column; 
+            }
+            
+            /* 【重點】讓表格自動長高 (flex-grow: 1)，把 A4 剩下的空間吃滿 */
+            table { 
+                width: 100%; 
+                flex-grow: 1; 
+                border-collapse: collapse; 
+                table-layout: fixed; 
+            }
+            
+            /* 置中與自動換行 */
+            th, td { 
+                border: 1px solid #000; 
+                text-align: center; 
+                vertical-align: middle; /* 讓文字完美置中 */
+                font-family: sans-serif; 
+                word-wrap: break-word; 
+                overflow: hidden;
+            }
+            
             th { background-color: #f3f4f6 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; font-weight: bold; }
-            .col-period { width: 80px; }
-            .page-break { page-break-after: always; }
-            .print-lunch { background-color: #e5e7eb !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            
+            /* 稍微加寬節次，避免文字太擠 */
+            .col-period { width: 65px; } 
+            
+            .print-lunch { background-color: #e5e7eb !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; letter-spacing: 2px; font-size: 14px; }
         }
-        /* 隱藏捲軸但保留功能，讓介面更乾淨 */
+        
         .hide-scrollbar::-webkit-scrollbar { display: none; }
         .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-    </style>
-</head>
+    </style>     
+   </head>
 <body class="bg-white font-sans text-duo-text selection:bg-duo-green selection:text-white">
     
     <!-- 應用程式根節點 -->
@@ -142,8 +170,7 @@
             { id: 5, time: "13:10-14:00", name: "Period 5" },
             { id: 6, time: "14:10-15:00", name: "Period 6" },
             { id: 7, time: "15:20-16:10", name: "Period 7" },
-            { id: 8, time: "16:20-17:10", name: "Period 8" }
-        ];
+ ];
 
 
         const baseDays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
@@ -1215,45 +1242,75 @@
                     </main>
 
 
-                    {/* ================= Print Only Section ================= */}
-                    <div className="hidden print-only w-full">
-                        {printSelection.map((cartName) => (
-                            <div key={cartName} className="page-break w-full">
-                                <div className="text-center mb-4">
-                                    <h2 className="text-2xl font-bold">{cartName} Reservation List</h2>
-                                    <p className="text-sm mt-1">Week {selectedWeek} ( {getWeekDateRange(selectedWeek, allowSaturday)} )</p>
-                                </div>
-                                <table className="w-full">
-                                    <thead>
-                                        <tr>
-                                            <th className="col-period">Period</th>
-                                            {currentDays.map((d, dayIdx) => (
-                                                <th key={d}>
-                                                    {d}<br/>
-                                                    <span style={{fontSize:'12px', fontWeight:'normal', color:'#666'}}>{getDateForDayIdx(selectedWeek, dayIdx)}</span>
-                                                </th>
-                                            ))}
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {periods.map(period => (
-                                            <tr key={period.id}>
-                                                <td><strong>{period.name}</strong><br/><span style={{fontSize:'10px'}}>{period.time}</span></td>
-                                                {currentDays.map((day, dayIdx) => {
-                                                    if (period.id === 'lunch') return <td key={dayIdx} className="print-lunch">Lunch Break</td>;
-                                                    const booking = cartData[cartName].schedule[`w${selectedWeek}_d${dayIdx}_p${period.id}`];
-                                                    return <td key={dayIdx}>{booking ? <div><strong>{booking.name}</strong><br/><span style={{fontSize:'12px'}}>{booking.className}</span></div> : ""}</td>;
-                                                })}
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                                <div className="mt-8 flex justify-between px-8 text-sm"><p>Notes: ________________________</p><p>Admin Signature: ________________</p></div>
-                            </div>
+                  {/* ================= Print Only Section ================= */}
+<div className="hidden print-only w-full">
+    {printSelection.map((cartName) => (
+        <div key={cartName} className="page-break w-full">
+            <div className="text-center mb-4">
+                <h2 className="text-2xl font-bold">{cartName} Reservation List</h2>
+                <p className="text-sm mt-1">Week {selectedWeek} ( {getWeekDateRange(selectedWeek, allowSaturday)} )</p>
+            </div>
+            {/* 加上 text-xs 讓字體稍微縮小，以容納更多欄位 */}
+            <table className="w-full text-xs" style={{ tableLayout: 'auto' }}>
+                <thead>
+                    <tr>
+                        {/* 節次標題跨兩列 */}
+                        <th className="col-period" rowSpan="2" style={{ width: '60px' }}>Period</th>
+                        {currentDays.map((d, dayIdx) => (
+                            /* 每天的標題跨三欄 (colSpan="3") */
+                            <th key={d} colSpan="3" className="bg-gray-100">
+                                {d} <span style={{fontSize:'12px', fontWeight:'normal', color:'#666'}}>{getDateForDayIdx(selectedWeek, dayIdx)}</span>
+                            </th>
                         ))}
-                    </div>
-
-
+                    </tr>
+                    <tr>
+                        {/* 產生每天下面的三個子標題 */}
+                        {currentDays.map(d => (
+                            <React.Fragment key={d + "-sub"}>
+                                <th className="p-1 text-[10px]">Class/Teacher</th>
+                                <th className="p-1 text-[10px]" style={{ width: '45px' }}>check-out</th>
+                                <th className="p-1 text-[10px]" style={{ width: '45px' }}>return</th>
+                            </React.Fragment>
+                        ))}
+                    </tr>
+                </thead>
+                <tbody>
+                    {periods.map(period => (
+                        <tr key={period.id}>
+                            <td><strong>{period.name}</strong><br/><span style={{fontSize:'10px'}}>{period.time}</span></td>
+                            {currentDays.map((day, dayIdx) => {
+                                // 如果是午休時間，合併3個欄位
+                                if (period.id === 'lunch') {
+                                    return <td key={dayIdx} colSpan="3" className="print-lunch font-bold text-center">Lunch Break / Noon Quiet Time</td>;
+                                }
+                                
+                                const booking = cartData[cartName].schedule[`w${selectedWeek}_d${dayIdx}_p${period.id}`];
+                                
+                                // 正常節次：產生 3 個 td (預約資訊、check-out 空白格、return 空白格)
+                                return (
+                                    <React.Fragment key={dayIdx}>
+                                        <td className="text-left align-top p-1">
+                                            {booking ? (
+                                                <div>
+                                                    <span style={{fontSize:'11px'}}>{booking.className}</span><br/>
+                                                    <strong>{booking.name}</strong>
+                                                </div>
+                                            ) : ""}
+                                        </td>
+                                        <td></td> {/* check-out 簽名格 */}
+                                        <td></td> {/* return 簽名格 */}
+                                    </React.Fragment>
+                                );
+                            })}
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
+            <div className="mt-8 flex justify-between px-8 text-sm">
+            </div>
+        </div>
+    ))}
+</div>
                     {/* ================= Modals ================= */}
                     {/* Booking Modal */}
                     {bookingModal.isOpen && (
