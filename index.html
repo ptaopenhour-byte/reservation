@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>IBSH Chromebook Cart Reservation</title>
+    <title>IBSH Chromebook Carts Reservation</title>
     
     <!-- 引入 Google Fonts: Nunito 圓體字型，完美契合 Duolingo 風格 -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -201,6 +201,7 @@
 
 
             const [currentView, setCurrentView] = useState('home');
+            const [viewHistory, setViewHistory] = useState(['home']); // 新增：歷史紀錄狀態
             const [activeFilter, setActiveFilter] = useState('All');
             const [activeLocationFilter, setActiveLocationFilter] = useState('All'); 
             const [searchQuery, setSearchQuery] = useState(''); // 新增：搜尋框狀態
@@ -234,6 +235,9 @@
             const [adminPwdForm, setAdminPwdForm] = useState({ current: '', new: '', confirm: '' });
 
 
+            const [userPwdModal, setUserPwdModal] = useState({ isOpen: false, current: '', new: '', confirm: '' });
+
+
             const [bookingModal, setBookingModal] = useState({ isOpen: false, dayIdx: null, periodId: null, existingBooking: null, isEditing: false, isBatch: false });
             const [bookForm, setBookForm] = useState({ classType: '', customClass: '' });
             const [editBookForm, setEditBookForm] = useState({ name: '', email: '', classType: '', customClass: '' });
@@ -248,6 +252,34 @@
 
             // My Bookings 視圖模式
             const [myBookingsView, setMyBookingsView] = useState('list'); // 'list' | 'calendar'
+
+
+            // --- 新增：導覽輔助函數 (處理上一頁邏輯) ---
+            const changeView = (newView) => {
+                if (newView === currentView) return;
+                setViewHistory(prev => [...prev, newView]); // 將新頁面推入歷史紀錄
+                setCurrentView(newView);
+            };
+
+
+            const goBack = () => {
+                if (viewHistory.length > 1) {
+                    const newHistory = [...viewHistory];
+                    newHistory.pop(); // 移除當前頁面
+                    const prevView = newHistory[newHistory.length - 1]; // 取得上一個頁面
+                    setViewHistory(newHistory);
+                    setCurrentView(prevView);
+                } else {
+                    setCurrentView('home'); // 如果沒有歷史紀錄了，就回首頁防呆
+                }
+            };
+
+
+            const goHome = () => {
+                setViewHistory(['home']); // 重置歷史紀錄
+                setCurrentView('home');
+            };
+            // ---------------------------------------
 
 
             useEffect(() => {
@@ -462,7 +494,7 @@
                     if (adminPwd === systemAdminPwd || hashedInput === systemAdminPwd) {
                         setIsAdmin(true);
                         setCurrentUser({ name: 'Admin', email: 'admin@school.edu', defaultClass: 'Admin', customClass: '' });
-                        setCurrentView('home');
+                        goHome();
                         setAdminPwd(''); 
                     } else {
                         showAlert("Incorrect admin password!");
@@ -474,7 +506,7 @@
                         // 向下相容機制：舊帳號可能是明文，新帳號是加密文
                         if (user.password === loginForm.password || user.password === hashedInput) {
                             setCurrentUser(user);
-                            setCurrentView('home');
+                            goHome();
                             return;
                         }
                     }
@@ -491,7 +523,7 @@
                     await dbRefs.fb.setDoc(dbRefs.getDocRef('users', newUser.email), newUser);
                     setCurrentUser(newUser);
                     addLog("User Registration", "System", `Registered email: ${newUser.email}`, newUser.name);
-                    setCurrentView('home');
+                    goHome();
                 }
             };
 
@@ -508,6 +540,44 @@
                 addLog("Change Password", "System", "Administrator password was updated");
                 showAlert("Admin password updated successfully!");
                 setAdminPwdForm({ current: '', new: '', confirm: '' });
+            };
+
+
+            const handleUserPwdChange = async (e) => {
+                e.preventDefault();
+                const { current, new: newPwd, confirm } = userPwdModal;
+                
+                // 檢查舊密碼 (向下相容：支援明文舊密碼與 SHA-256 新密碼)
+                const hashedCurrent = await sha256(current);
+                if (currentUser.password !== current && currentUser.password !== hashedCurrent) {
+                    return showAlert("Current password is incorrect! (目前密碼錯誤)");
+                }
+                // 檢查新密碼是否一致與長度
+                if (newPwd !== confirm) {
+                    return showAlert("New passwords do not match! (新密碼不一致)");
+                }
+                if (newPwd.length < 6) {
+                    return showAlert("Password must be at least 6 characters long.\n(密碼長度至少需要 6 個字元)");
+                }
+                
+                try {
+                    // 將新密碼加密並寫入資料庫
+                    const hashedNew = await sha256(newPwd);
+                    await dbRefs.fb.setDoc(dbRefs.getDocRef('users', currentUser.email), { 
+                        ...currentUser, 
+                        password: hashedNew 
+                    }, { merge: true });
+                    
+                    // 更新當下畫面中的使用者狀態
+                    setCurrentUser({ ...currentUser, password: hashedNew });
+                    
+                    addLog("Change Password", "System", "User changed their password", currentUser.name);
+                    showAlert("Password updated successfully! (密碼修改成功)");
+                    setUserPwdModal({ isOpen: false, current: '', new: '', confirm: '' });
+                } catch (err) {
+                    console.error(err);
+                    showAlert("Update failed. Please try again. (更新失敗，請稍後再試)");
+                }
             };
 
 
@@ -833,7 +903,7 @@
                                 <div className="inline-block bg-white p-4 rounded-3xl border-2 border-duo-grayBorder shadow-[0_6px_0_0_#e5e5e5] mb-4">
                                     <i className="fa-solid fa-laptop-chromebook text-duo-green text-5xl"></i>
                                 </div>
-                                <h1 className="text-3xl font-extrabold text-duo-text tracking-tight">IBSH Chromebooks</h1>
+                                <h1 className="text-3xl font-extrabold text-duo-text tracking-tight">IBSH Chromebook Carts Reservation</h1>
                                 <p className="text-duo-text/60 font-bold mt-2">{authMode === 'login' ? 'Let\'s get booking!' : authMode === 'register' ? 'Create an account' : 'Admin Access'}</p>
                             </div>
 
@@ -907,24 +977,24 @@
                     {/* Header */}
                     <header className="bg-white border-b-2 border-duo-grayBorder sticky top-0 z-50 no-print">
                         <div className="max-w-7xl mx-auto px-4 py-4 flex flex-wrap justify-between items-center gap-4">
-                            <div className="flex items-center space-x-3 cursor-pointer group" onClick={() => setCurrentView('home')}>
+                            <div className="flex items-center space-x-3 cursor-pointer group" onClick={goHome}>
                                 <i className="fa-solid fa-cube text-duo-green text-3xl group-hover:scale-110 transition-transform"></i>
-                                <h1 className="text-2xl font-extrabold text-duo-green tracking-tight hidden sm:block">IBSH Chromebooks</h1>
+                                <h1 className="text-2xl font-extrabold text-duo-green tracking-tight hidden sm:block">IBSH Chromebook Carts Reservation</h1>
                             </div>
                             
                             <div className="flex items-center gap-3">
-                                <button onClick={() => setCurrentView('print')} className="px-4 py-2.5 bg-white border-2 border-duo-grayBorder text-gray-400 font-extrabold uppercase tracking-wider rounded-2xl shadow-[0_4px_0_0_#e5e5e5] hover:bg-gray-50 active:shadow-none active:translate-y-[4px] transition-all text-xs sm:text-sm">
+                                <button onClick={() => changeView('print')} className="px-4 py-2.5 bg-white border-2 border-duo-grayBorder text-gray-400 font-extrabold uppercase tracking-wider rounded-2xl shadow-[0_4px_0_0_#e5e5e5] hover:bg-gray-50 active:shadow-none active:translate-y-[4px] transition-all text-xs sm:text-sm">
                                     <i className="fa-solid fa-print sm:mr-1"></i> <span className="hidden sm:inline">Print</span>
                                 </button>
 
 
-                                <button onClick={() => setCurrentView('my-bookings')} className={`px-4 py-2.5 font-extrabold uppercase tracking-wider rounded-2xl transition-all text-xs sm:text-sm ${currentView === 'my-bookings' ? 'bg-duo-blue text-white shadow-[0_4px_0_0_#1899d6] active:shadow-none active:translate-y-[4px]' : 'bg-white border-2 border-duo-grayBorder text-duo-blue shadow-[0_4px_0_0_#e5e5e5] hover:bg-blue-50 active:shadow-none active:translate-y-[4px]'}`}>
+                                <button onClick={() => changeView('my-bookings')} className={`px-4 py-2.5 font-extrabold uppercase tracking-wider rounded-2xl transition-all text-xs sm:text-sm ${currentView === 'my-bookings' ? 'bg-duo-blue text-white shadow-[0_4px_0_0_#1899d6] active:shadow-none active:translate-y-[4px]' : 'bg-white border-2 border-duo-grayBorder text-duo-blue shadow-[0_4px_0_0_#e5e5e5] hover:bg-blue-50 active:shadow-none active:translate-y-[4px]'}`}>
                                     <i className="fa-solid fa-calendar-check sm:mr-1"></i> <span className="hidden sm:inline">My Bookings</span>
                                 </button>
 
 
                                 {isAdmin && (
-                                    <button onClick={() => { setCurrentView('admin'); setAdminTab('carts'); }} className={`px-4 py-2.5 font-extrabold uppercase tracking-wider rounded-2xl transition-all text-xs sm:text-sm ${currentView === 'admin' ? 'bg-duo-text text-white shadow-[0_4px_0_0_#2b2b2b] active:shadow-none active:translate-y-[4px]' : 'bg-white border-2 border-duo-grayBorder text-duo-text shadow-[0_4px_0_0_#e5e5e5] hover:bg-gray-50 active:shadow-none active:translate-y-[4px]'}`}>
+                                    <button onClick={() => { changeView('admin'); setAdminTab('carts'); }} className={`px-4 py-2.5 font-extrabold uppercase tracking-wider rounded-2xl transition-all text-xs sm:text-sm ${currentView === 'admin' ? 'bg-duo-text text-white shadow-[0_4px_0_0_#2b2b2b] active:shadow-none active:translate-y-[4px]' : 'bg-white border-2 border-duo-grayBorder text-duo-text shadow-[0_4px_0_0_#e5e5e5] hover:bg-gray-50 active:shadow-none active:translate-y-[4px]'}`}>
                                         <i className="fa-solid fa-gear sm:mr-1"></i> <span className="hidden sm:inline">Admin</span>
                                     </button>
                                 )}
@@ -935,7 +1005,10 @@
                                         <i className={`fa-solid ${isAdmin ? 'fa-shield-halved text-duo-yellow' : 'fa-user'} mr-2`}></i>
                                         {currentUser.name}
                                     </div>
-                                    <button onClick={() => { setCurrentUser(null); setIsAdmin(false); setAuthMode('login'); }} className="px-4 h-full border-l-2 border-duo-grayBorder text-gray-400 hover:text-duo-red hover:bg-red-50 transition-colors" title="Log Out">
+                                    <button onClick={() => setUserPwdModal({ isOpen: true, current: '', new: '', confirm: '' })} className="px-3 h-full border-l-2 border-duo-grayBorder text-gray-400 hover:text-duo-yellow hover:bg-yellow-50 transition-colors" title="Change Password">
+                                        <i className="fa-solid fa-key"></i>
+                                    </button>
+                                    <button onClick={() => { setCurrentUser(null); setIsAdmin(false); setAuthMode('login'); }} className="px-3 h-full border-l-2 border-duo-grayBorder text-gray-400 hover:text-duo-red hover:bg-red-50 transition-colors" title="Log Out">
                                         <i className="fa-solid fa-right-from-bracket"></i>
                                     </button>
                                 </div>
@@ -983,6 +1056,11 @@
                         {/* --- View: My Bookings --- */}
                         {currentView === 'my-bookings' && (
                             <div className="animate-[fadeIn_0.3s_ease-out]">
+                                <div className="mb-6 flex items-center justify-between">
+                                    <button onClick={goBack} className="text-gray-400 font-extrabold uppercase tracking-wider hover:text-duo-text transition-colors flex items-center border-2 border-duo-grayBorder px-4 py-2 rounded-xl bg-white hover:bg-gray-50">
+                                        <i className="fa-solid fa-arrow-left mr-2"></i> Back
+                                    </button>
+                                </div>
                                 <div className="mb-8 border-b-2 border-duo-grayBorder pb-6 flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
                                     <div>
                                         <h2 className="text-3xl font-extrabold text-duo-text tracking-tight">My Bookings</h2>
@@ -1002,7 +1080,7 @@
                                         </div>
                                         <h3 className="text-2xl font-extrabold text-duo-text mb-2">No Bookings Yet</h3>
                                         <p className="text-gray-500 font-bold mb-8">You haven't reserved any equipment for your classes.</p>
-                                        <button onClick={() => setCurrentView('home')} className="px-8 py-4 bg-duo-green text-white font-extrabold uppercase tracking-wider rounded-2xl shadow-duo-green hover:bg-[#46a302] active:shadow-none active:translate-y-[4px] transition-all">
+                                        <button onClick={goHome} className="px-8 py-4 bg-duo-green text-white font-extrabold uppercase tracking-wider rounded-2xl shadow-duo-green hover:bg-[#46a302] active:shadow-none active:translate-y-[4px] transition-all">
                                             <i className="fa-solid fa-magnifying-glass mr-2"></i> Find Equipment
                                         </button>
                                     </div>
@@ -1157,7 +1235,7 @@
 
                                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                                     {filteredCarts.map(([name, data]) => (
-                                        <div key={name} onClick={() => { setSelectedCart(name); setCurrentView('schedule'); setIsBatchMode(false); setBatchSelection([]); }} className="bg-white rounded-3xl border-2 border-duo-grayBorder shadow-duo-card p-6 hover:-translate-y-1 hover:shadow-[0_8px_0_0_#e5e5e5] active:translate-y-[4px] active:shadow-none cursor-pointer transition-all flex flex-col group">
+                                        <div key={name} onClick={() => { setSelectedCart(name); changeView('schedule'); setIsBatchMode(false); setBatchSelection([]); }} className="bg-white rounded-3xl border-2 border-duo-grayBorder shadow-duo-card p-6 hover:-translate-y-1 hover:shadow-[0_8px_0_0_#e5e5e5] active:translate-y-[4px] active:shadow-none cursor-pointer transition-all flex flex-col group">
                                             <div className="flex justify-between items-start mb-4">
                                                 {getIcon(data.type)}
                                                 <span className="bg-duo-grayLight text-gray-500 text-xs px-3 py-1.5 rounded-xl font-extrabold border-2 border-duo-grayBorder uppercase tracking-wider">{data.capacity} Devices</span>
@@ -1180,7 +1258,7 @@
                         {currentView === 'schedule' && selectedCart && (
                             <div className="animate-[fadeIn_0.3s_ease-out]">
                                 <div className="mb-6 flex items-center justify-between">
-                                    <button onClick={() => { setSelectedCart(null); setCurrentView('home'); setIsBatchMode(false); setBatchSelection([]); }} className="text-gray-400 font-extrabold uppercase tracking-wider hover:text-duo-text transition-colors flex items-center border-2 border-duo-grayBorder px-4 py-2 rounded-xl bg-white hover:bg-gray-50">
+                                    <button onClick={() => { setSelectedCart(null); goBack(); setIsBatchMode(false); setBatchSelection([]); }} className="text-gray-400 font-extrabold uppercase tracking-wider hover:text-duo-text transition-colors flex items-center border-2 border-duo-grayBorder px-4 py-2 rounded-xl bg-white hover:bg-gray-50">
                                         <i className="fa-solid fa-arrow-left mr-2"></i> Back
                                     </button>
                                     
@@ -1309,169 +1387,183 @@
 
                         {/* --- View: Admin Dashboard --- */}
                         {currentView === 'admin' && isAdmin && (
-                            <div className="bg-white rounded-[2rem] border-2 border-duo-grayBorder shadow-duo-card overflow-hidden animate-[fadeIn_0.3s_ease-out]">
-                                <div className="flex border-b-2 border-duo-grayBorder bg-duo-grayLight overflow-x-auto hide-scrollbar">
-                                    <button onClick={() => setAdminTab('carts')} className={`px-6 py-5 text-sm font-extrabold uppercase tracking-wider flex items-center whitespace-nowrap transition-colors ${adminTab === 'carts' ? 'bg-white text-duo-blue border-b-4 border-duo-blue' : 'text-gray-400 border-b-4 border-transparent hover:text-duo-text'}`}><i className="fa-solid fa-cube mr-2 text-lg"></i> Equipment</button>
-                                    <button onClick={() => setAdminTab('users')} className={`px-6 py-5 text-sm font-extrabold uppercase tracking-wider flex items-center whitespace-nowrap transition-colors ${adminTab === 'users' ? 'bg-white text-duo-blue border-b-4 border-duo-blue' : 'text-gray-400 border-b-4 border-transparent hover:text-duo-text'}`}><i className="fa-solid fa-users mr-2 text-lg"></i> Users</button>
-                                    <button onClick={() => setAdminTab('logs')} className={`px-6 py-5 text-sm font-extrabold uppercase tracking-wider flex items-center whitespace-nowrap transition-colors ${adminTab === 'logs' ? 'bg-white text-duo-blue border-b-4 border-duo-blue' : 'text-gray-400 border-b-4 border-transparent hover:text-duo-text'}`}><i className="fa-solid fa-list-ul mr-2 text-lg"></i> Logs</button>
-                                    <button onClick={() => setAdminTab('settings')} className={`px-6 py-5 text-sm font-extrabold uppercase tracking-wider flex items-center whitespace-nowrap transition-colors ${adminTab === 'settings' ? 'bg-white text-duo-blue border-b-4 border-duo-blue' : 'text-gray-400 border-b-4 border-transparent hover:text-duo-text'}`}><i className="fa-solid fa-gear mr-2 text-lg"></i> Settings</button>
+                            <div className="animate-[fadeIn_0.3s_ease-out]">
+                                <div className="mb-6 flex items-center justify-between">
+                                    <button onClick={goBack} className="text-gray-400 font-extrabold uppercase tracking-wider hover:text-duo-text transition-colors flex items-center border-2 border-duo-grayBorder px-4 py-2 rounded-xl bg-white hover:bg-gray-50">
+                                        <i className="fa-solid fa-arrow-left mr-2"></i> Back
+                                    </button>
                                 </div>
+                                <div className="bg-white rounded-[2rem] border-2 border-duo-grayBorder shadow-duo-card overflow-hidden">
+                                    <div className="flex border-b-2 border-duo-grayBorder bg-duo-grayLight overflow-x-auto hide-scrollbar">
+                                        <button onClick={() => setAdminTab('carts')} className={`px-6 py-5 text-sm font-extrabold uppercase tracking-wider flex items-center whitespace-nowrap transition-colors ${adminTab === 'carts' ? 'bg-white text-duo-blue border-b-4 border-duo-blue' : 'text-gray-400 border-b-4 border-transparent hover:text-duo-text'}`}><i className="fa-solid fa-cube mr-2 text-lg"></i> Equipment</button>
+                                        <button onClick={() => setAdminTab('users')} className={`px-6 py-5 text-sm font-extrabold uppercase tracking-wider flex items-center whitespace-nowrap transition-colors ${adminTab === 'users' ? 'bg-white text-duo-blue border-b-4 border-duo-blue' : 'text-gray-400 border-b-4 border-transparent hover:text-duo-text'}`}><i className="fa-solid fa-users mr-2 text-lg"></i> Users</button>
+                                        <button onClick={() => setAdminTab('logs')} className={`px-6 py-5 text-sm font-extrabold uppercase tracking-wider flex items-center whitespace-nowrap transition-colors ${adminTab === 'logs' ? 'bg-white text-duo-blue border-b-4 border-duo-blue' : 'text-gray-400 border-b-4 border-transparent hover:text-duo-text'}`}><i className="fa-solid fa-list-ul mr-2 text-lg"></i> Logs</button>
+                                        <button onClick={() => setAdminTab('settings')} className={`px-6 py-5 text-sm font-extrabold uppercase tracking-wider flex items-center whitespace-nowrap transition-colors ${adminTab === 'settings' ? 'bg-white text-duo-blue border-b-4 border-duo-blue' : 'text-gray-400 border-b-4 border-transparent hover:text-duo-text'}`}><i className="fa-solid fa-gear mr-2 text-lg"></i> Settings</button>
+                                    </div>
 
 
-                                <div className="p-8">
-                                    {adminTab === 'carts' && (
-                                        <div>
-                                            <div className="flex flex-wrap justify-between items-center mb-6 gap-4 border-b-2 border-duo-grayBorder pb-4">
-                                                <h3 className="text-2xl font-extrabold text-duo-text">Equipment List</h3>
-                                                <button onClick={() => setEditCartModal({ isOpen: true, cartName: null, data: { type: 'Chromebook', capacity: 30, location: '', notes: '' } })} className="px-5 py-3 bg-duo-green text-white font-extrabold uppercase tracking-wider text-sm rounded-2xl shadow-duo-green active:shadow-none active:translate-y-[4px] transition-all"><i className="fa-solid fa-plus mr-2"></i> Add New</button>
+                                    <div className="p-8">
+                                        {adminTab === 'carts' && (
+                                            <div>
+                                                <div className="flex flex-wrap justify-between items-center mb-6 gap-4 border-b-2 border-duo-grayBorder pb-4">
+                                                    <h3 className="text-2xl font-extrabold text-duo-text">Equipment List</h3>
+                                                    <button onClick={() => setEditCartModal({ isOpen: true, cartName: null, data: { type: 'Chromebook', capacity: 30, location: '', notes: '' } })} className="px-5 py-3 bg-duo-green text-white font-extrabold uppercase tracking-wider text-sm rounded-2xl shadow-duo-green active:shadow-none active:translate-y-[4px] transition-all"><i className="fa-solid fa-plus mr-2"></i> Add New</button>
+                                                </div>
+                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                    {sortedAllCarts.map(([name, data], index) => (
+                                                        <div key={name} className="border-2 border-duo-grayBorder rounded-2xl p-3 sm:p-4 flex items-center justify-between bg-white hover:border-duo-blue transition-colors">
+                                                            <div className="flex items-center gap-3 sm:gap-4">
+                                                                {/* 手動排序箭頭區塊 */}
+                                                                <div className="flex flex-col gap-1 pr-3 border-r-2 border-duo-grayBorder shrink-0">
+                                                                    <button onClick={() => moveCart(name, 'up')} disabled={index === 0} className="text-gray-300 hover:text-duo-blue disabled:opacity-20 disabled:hover:text-gray-300 transition-colors cursor-pointer"><i className="fa-solid fa-caret-up text-2xl leading-none"></i></button>
+                                                                    <button onClick={() => moveCart(name, 'down')} disabled={index === sortedAllCarts.length - 1} className="text-gray-300 hover:text-duo-blue disabled:opacity-20 disabled:hover:text-gray-300 transition-colors cursor-pointer"><i className="fa-solid fa-caret-down text-2xl leading-none"></i></button>
+                                                                </div>
+                                                                {getIcon(data.type)}
+                                                                <div className="truncate">
+                                                                    <div className="font-extrabold text-lg text-duo-text leading-none truncate">{name}</div>
+                                                                    <div className="text-sm font-bold text-gray-400 mt-1 truncate">{data.capacity} pts • {data.location}</div>
+                                                                </div>
+                                                            </div>
+                                                            <div className="flex gap-2 ml-2 shrink-0">
+                                                                <button onClick={() => setEditCartModal({ isOpen: true, cartName: name, data: data })} className="w-10 h-10 bg-white border-2 border-duo-grayBorder text-duo-blue rounded-xl shadow-duo-gray active:shadow-none active:translate-y-[4px] flex items-center justify-center transition-all" title="Edit"><i className="fa-solid fa-pen"></i></button>
+                                                                <button onClick={() => deleteCart(name)} className="w-10 h-10 bg-white border-2 border-duo-grayBorder text-duo-red rounded-xl shadow-duo-gray active:shadow-none active:translate-y-[4px] flex items-center justify-center transition-all" title="Delete"><i className="fa-solid fa-trash"></i></button>
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
                                             </div>
-                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                                {sortedAllCarts.map(([name, data], index) => (
-                                                    <div key={name} className="border-2 border-duo-grayBorder rounded-2xl p-3 sm:p-4 flex items-center justify-between bg-white hover:border-duo-blue transition-colors">
-                                                        <div className="flex items-center gap-3 sm:gap-4">
-                                                            {/* 手動排序箭頭區塊 */}
-                                                            <div className="flex flex-col gap-1 pr-3 border-r-2 border-duo-grayBorder shrink-0">
-                                                                <button onClick={() => moveCart(name, 'up')} disabled={index === 0} className="text-gray-300 hover:text-duo-blue disabled:opacity-20 disabled:hover:text-gray-300 transition-colors cursor-pointer"><i className="fa-solid fa-caret-up text-2xl leading-none"></i></button>
-                                                                <button onClick={() => moveCart(name, 'down')} disabled={index === sortedAllCarts.length - 1} className="text-gray-300 hover:text-duo-blue disabled:opacity-20 disabled:hover:text-gray-300 transition-colors cursor-pointer"><i className="fa-solid fa-caret-down text-2xl leading-none"></i></button>
+                                        )}
+
+
+                                        {adminTab === 'users' && (
+                                            <div>
+                                                <h3 className="text-2xl font-extrabold text-duo-text mb-6 border-b-2 border-duo-grayBorder pb-4">Registered Teachers</h3>
+                                                <div className="overflow-x-auto border-2 border-duo-grayBorder rounded-2xl">
+                                                    <table className="w-full text-left">
+                                                        <thead className="bg-duo-grayLight border-b-2 border-duo-grayBorder">
+                                                            <tr><th className="p-4 text-xs font-extrabold text-gray-400 uppercase tracking-wider">Name</th><th className="p-4 text-xs font-extrabold text-gray-400 uppercase tracking-wider">Email</th><th className="p-4 text-xs font-extrabold text-gray-400 uppercase tracking-wider">Class</th><th className="p-4 text-right text-xs font-extrabold text-gray-400 uppercase tracking-wider">Actions</th></tr>
+                                                        </thead>
+                                                        <tbody className="divide-y-2 divide-duo-grayBorder">
+                                                            {Object.values(usersDB).map((user) => (
+                                                                <tr key={user.email} className="hover:bg-gray-50 transition-colors">
+                                                                    <td className="p-4 font-extrabold text-duo-text">{user.name}</td>
+                                                                    <td className="p-4 font-bold text-gray-500">{user.email}</td>
+                                                                    <td className="p-4 font-bold text-gray-500">{user.defaultClass === 'Other (Specify)' ? user.customClass : user.defaultClass}</td>
+                                                                    <td className="p-4 flex justify-end gap-2">
+                                                                        <button onClick={() => resetUserPassword(user.email)} className="px-3 py-2 bg-white border-2 border-duo-grayBorder text-duo-yellowDark rounded-xl shadow-duo-gray active:shadow-none active:translate-y-[4px] text-xs font-extrabold uppercase transition-all"><i className="fa-solid fa-key mr-1"></i> Pwd</button>
+                                                                        <button onClick={() => deleteUser(user.email)} className="px-3 py-2 bg-white border-2 border-duo-grayBorder text-duo-red rounded-xl shadow-duo-gray active:shadow-none active:translate-y-[4px] text-xs font-extrabold uppercase transition-all"><i className="fa-solid fa-trash mr-1"></i> Del</button>
+                                                                    </td>
+                                                                </tr>
+                                                            ))}
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                            </div>
+                                        )}
+
+
+                                        {adminTab === 'logs' && (
+                                            <div>
+                                                <h3 className="text-2xl font-extrabold text-duo-text mb-6 border-b-2 border-duo-grayBorder pb-4">Activity Logs</h3>
+                                                <div className="overflow-x-auto max-h-[600px] overflow-y-auto border-2 border-duo-grayBorder rounded-2xl custom-scrollbar">
+                                                    <table className="w-full text-left min-w-[700px]">
+                                                        <thead className="bg-duo-grayLight border-b-2 border-duo-grayBorder sticky top-0 z-10">
+                                                            <tr><th className="p-4 text-xs font-extrabold text-gray-400 uppercase tracking-wider">Time</th><th className="p-4 text-xs font-extrabold text-gray-400 uppercase tracking-wider">User</th><th className="p-4 text-xs font-extrabold text-gray-400 uppercase tracking-wider">Action</th><th className="p-4 text-xs font-extrabold text-gray-400 uppercase tracking-wider">Details</th></tr>
+                                                        </thead>
+                                                        <tbody className="divide-y-2 divide-duo-grayBorder">
+                                                            {activityLogs.map((log) => (
+                                                                <tr key={log.id} className="hover:bg-gray-50">
+                                                                    <td className="p-4 font-bold text-gray-400 text-sm whitespace-nowrap">{log.time}</td>
+                                                                    <td className="p-4 font-extrabold text-duo-text">{log.operator}</td>
+                                                                    <td className="p-4">
+                                                                        <span className={`px-3 py-1 rounded-xl text-xs font-extrabold uppercase tracking-wider border-2 ${log.action.includes('Cancel') || log.action.includes('Delete') || log.action.includes('Clear') ? 'bg-red-50 text-duo-red border-red-200' : log.action.includes('Registration') ? 'bg-blue-50 text-duo-blue border-blue-200' : 'bg-green-50 text-duo-green border-green-200'}`}>
+                                                                            {log.action}
+                                                                        </span>
+                                                                    </td>
+                                                                    <td className="p-4 font-bold text-gray-500 text-sm"><span className="text-duo-text font-extrabold mr-2">{log.cart}</span>{log.details}</td>
+                                                                </tr>
+                                                            ))}
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                            </div>
+                                        )}
+
+
+                                        {adminTab === 'settings' && (
+                                            <div className="flex flex-col lg:flex-row gap-8">
+                                                <div className="flex-1">
+                                                    <h3 className="text-2xl font-extrabold text-duo-text mb-6 border-b-2 border-duo-grayBorder pb-4">Semester Config</h3>
+                                                    <div className="bg-duo-grayLight border-2 border-duo-grayBorder rounded-[2rem] p-6 mb-8">
+                                                        <form onSubmit={handleSemesterConfigSave} className="space-y-4">
+                                                            <div><label className="block text-xs font-extrabold text-gray-500 uppercase tracking-wider mb-2">Start Date (Week 1)</label><input required type="date" value={tempSemesterConfig.startDate} onChange={e => setTempSemesterConfig({...tempSemesterConfig, startDate: e.target.value})} className="w-full px-4 py-3 bg-white border-2 border-duo-grayBorder rounded-xl focus:border-duo-blue outline-none font-bold text-duo-text" /></div>
+                                                            <div className="grid grid-cols-2 gap-4">
+                                                                <div><label className="block text-xs font-extrabold text-gray-500 uppercase tracking-wider mb-2">Total Weeks</label><input required type="number" min="1" max="52" value={tempSemesterConfig.totalWeeks} onChange={e => setTempSemesterConfig({...tempSemesterConfig, totalWeeks: Number(e.target.value)})} className="w-full px-4 py-3 bg-white border-2 border-duo-grayBorder rounded-xl focus:border-duo-blue outline-none font-bold text-duo-text" /></div>
+                                                                <div><label className="block text-xs font-extrabold text-gray-500 uppercase tracking-wider mb-2">Max Advance (Weeks)</label><input required type="number" min="1" max="52" value={tempSemesterConfig.maxAdvanceWeeks || 2} onChange={e => setTempSemesterConfig({...tempSemesterConfig, maxAdvanceWeeks: Number(e.target.value)})} title="老師最多可以提前幾週預約" className="w-full px-4 py-3 bg-white border-2 border-duo-grayBorder rounded-xl focus:border-duo-blue outline-none font-bold text-duo-text" /></div>
                                                             </div>
-                                                            {getIcon(data.type)}
-                                                            <div className="truncate">
-                                                                <div className="font-extrabold text-lg text-duo-text leading-none truncate">{name}</div>
-                                                                <div className="text-sm font-bold text-gray-400 mt-1 truncate">{data.capacity} pts • {data.location}</div>
-                                                            </div>
-                                                        </div>
-                                                        <div className="flex gap-2 ml-2 shrink-0">
-                                                            <button onClick={() => setEditCartModal({ isOpen: true, cartName: name, data: data })} className="w-10 h-10 bg-white border-2 border-duo-grayBorder text-duo-blue rounded-xl shadow-duo-gray active:shadow-none active:translate-y-[4px] flex items-center justify-center transition-all" title="Edit"><i className="fa-solid fa-pen"></i></button>
-                                                            <button onClick={() => deleteCart(name)} className="w-10 h-10 bg-white border-2 border-duo-grayBorder text-duo-red rounded-xl shadow-duo-gray active:shadow-none active:translate-y-[4px] flex items-center justify-center transition-all" title="Delete"><i className="fa-solid fa-trash"></i></button>
-                                                        </div>
+                                                            <button type="submit" className="w-full mt-2 bg-duo-green text-white font-extrabold uppercase py-3 rounded-2xl shadow-duo-green active:shadow-none active:translate-y-[4px] transition-all tracking-wider">Save Config</button>
+                                                        </form>
                                                     </div>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    )}
 
 
-                                    {adminTab === 'users' && (
-                                        <div>
-                                            <h3 className="text-2xl font-extrabold text-duo-text mb-6 border-b-2 border-duo-grayBorder pb-4">Registered Teachers</h3>
-                                            <div className="overflow-x-auto border-2 border-duo-grayBorder rounded-2xl">
-                                                <table className="w-full text-left">
-                                                    <thead className="bg-duo-grayLight border-b-2 border-duo-grayBorder">
-                                                        <tr><th className="p-4 text-xs font-extrabold text-gray-400 uppercase tracking-wider">Name</th><th className="p-4 text-xs font-extrabold text-gray-400 uppercase tracking-wider">Email</th><th className="p-4 text-xs font-extrabold text-gray-400 uppercase tracking-wider">Class</th><th className="p-4 text-right text-xs font-extrabold text-gray-400 uppercase tracking-wider">Actions</th></tr>
-                                                    </thead>
-                                                    <tbody className="divide-y-2 divide-duo-grayBorder">
-                                                        {Object.values(usersDB).map((user) => (
-                                                            <tr key={user.email} className="hover:bg-gray-50 transition-colors">
-                                                                <td className="p-4 font-extrabold text-duo-text">{user.name}</td>
-                                                                <td className="p-4 font-bold text-gray-500">{user.email}</td>
-                                                                <td className="p-4 font-bold text-gray-500">{user.defaultClass === 'Other (Specify)' ? user.customClass : user.defaultClass}</td>
-                                                                <td className="p-4 flex justify-end gap-2">
-                                                                    <button onClick={() => resetUserPassword(user.email)} className="px-3 py-2 bg-white border-2 border-duo-grayBorder text-duo-yellowDark rounded-xl shadow-duo-gray active:shadow-none active:translate-y-[4px] text-xs font-extrabold uppercase transition-all"><i className="fa-solid fa-key mr-1"></i> Pwd</button>
-                                                                    <button onClick={() => deleteUser(user.email)} className="px-3 py-2 bg-white border-2 border-duo-grayBorder text-duo-red rounded-xl shadow-duo-gray active:shadow-none active:translate-y-[4px] text-xs font-extrabold uppercase transition-all"><i className="fa-solid fa-trash mr-1"></i> Del</button>
-                                                                </td>
-                                                            </tr>
-                                                        ))}
-                                                    </tbody>
-                                                </table>
-                                            </div>
-                                        </div>
-                                    )}
-
-
-                                    {adminTab === 'logs' && (
-                                        <div>
-                                            <h3 className="text-2xl font-extrabold text-duo-text mb-6 border-b-2 border-duo-grayBorder pb-4">Activity Logs</h3>
-                                            <div className="overflow-x-auto max-h-[600px] overflow-y-auto border-2 border-duo-grayBorder rounded-2xl custom-scrollbar">
-                                                <table className="w-full text-left min-w-[700px]">
-                                                    <thead className="bg-duo-grayLight border-b-2 border-duo-grayBorder sticky top-0 z-10">
-                                                        <tr><th className="p-4 text-xs font-extrabold text-gray-400 uppercase tracking-wider">Time</th><th className="p-4 text-xs font-extrabold text-gray-400 uppercase tracking-wider">User</th><th className="p-4 text-xs font-extrabold text-gray-400 uppercase tracking-wider">Action</th><th className="p-4 text-xs font-extrabold text-gray-400 uppercase tracking-wider">Details</th></tr>
-                                                    </thead>
-                                                    <tbody className="divide-y-2 divide-duo-grayBorder">
-                                                        {activityLogs.map((log) => (
-                                                            <tr key={log.id} className="hover:bg-gray-50">
-                                                                <td className="p-4 font-bold text-gray-400 text-sm whitespace-nowrap">{log.time}</td>
-                                                                <td className="p-4 font-extrabold text-duo-text">{log.operator}</td>
-                                                                <td className="p-4">
-                                                                    <span className={`px-3 py-1 rounded-xl text-xs font-extrabold uppercase tracking-wider border-2 ${log.action.includes('Cancel') || log.action.includes('Delete') || log.action.includes('Clear') ? 'bg-red-50 text-duo-red border-red-200' : log.action.includes('Registration') ? 'bg-blue-50 text-duo-blue border-blue-200' : 'bg-green-50 text-duo-green border-green-200'}`}>
-                                                                        {log.action}
-                                                                    </span>
-                                                                </td>
-                                                                <td className="p-4 font-bold text-gray-500 text-sm"><span className="text-duo-text font-extrabold mr-2">{log.cart}</span>{log.details}</td>
-                                                            </tr>
-                                                        ))}
-                                                    </tbody>
-                                                </table>
-                                            </div>
-                                        </div>
-                                    )}
-
-
-                                    {adminTab === 'settings' && (
-                                        <div className="flex flex-col lg:flex-row gap-8">
-                                            <div className="flex-1">
-                                                <h3 className="text-2xl font-extrabold text-duo-text mb-6 border-b-2 border-duo-grayBorder pb-4">Semester Config</h3>
-                                                <div className="bg-duo-grayLight border-2 border-duo-grayBorder rounded-[2rem] p-6 mb-8">
-                                                    <form onSubmit={handleSemesterConfigSave} className="space-y-4">
-                                                        <div><label className="block text-xs font-extrabold text-gray-500 uppercase tracking-wider mb-2">Start Date (Week 1)</label><input required type="date" value={tempSemesterConfig.startDate} onChange={e => setTempSemesterConfig({...tempSemesterConfig, startDate: e.target.value})} className="w-full px-4 py-3 bg-white border-2 border-duo-grayBorder rounded-xl focus:border-duo-blue outline-none font-bold text-duo-text" /></div>
-                                                        <div className="grid grid-cols-2 gap-4">
-                                                            <div><label className="block text-xs font-extrabold text-gray-500 uppercase tracking-wider mb-2">Total Weeks</label><input required type="number" min="1" max="52" value={tempSemesterConfig.totalWeeks} onChange={e => setTempSemesterConfig({...tempSemesterConfig, totalWeeks: Number(e.target.value)})} className="w-full px-4 py-3 bg-white border-2 border-duo-grayBorder rounded-xl focus:border-duo-blue outline-none font-bold text-duo-text" /></div>
-                                                            <div><label className="block text-xs font-extrabold text-gray-500 uppercase tracking-wider mb-2">Max Advance (Weeks)</label><input required type="number" min="1" max="52" value={tempSemesterConfig.maxAdvanceWeeks || 2} onChange={e => setTempSemesterConfig({...tempSemesterConfig, maxAdvanceWeeks: Number(e.target.value)})} title="老師最多可以提前幾週預約" className="w-full px-4 py-3 bg-white border-2 border-duo-grayBorder rounded-xl focus:border-duo-blue outline-none font-bold text-duo-text" /></div>
-                                                        </div>
-                                                        <button type="submit" className="w-full mt-2 bg-duo-green text-white font-extrabold uppercase py-3 rounded-2xl shadow-duo-green active:shadow-none active:translate-y-[4px] transition-all tracking-wider">Save Config</button>
-                                                    </form>
+                                                    <h3 className="text-2xl font-extrabold text-duo-red mb-6 border-b-2 border-duo-grayBorder pb-4"><i className="fa-solid fa-skull mr-2"></i> Danger Zone</h3>
+                                                    <div className="bg-red-50 border-2 border-red-200 rounded-[2rem] p-6">
+                                                        <p className="text-sm font-bold text-duo-red mb-4">Click below to wipe all booking records in the system. Use at the start of a new semester. Cannot be undone!</p>
+                                                        <button onClick={handleClearSemesterData} className="w-full bg-duo-red text-white font-extrabold uppercase py-3 rounded-2xl shadow-duo-red active:shadow-none active:translate-y-[4px] transition-all tracking-wider">
+                                                            <i className="fa-solid fa-bomb mr-2"></i> Clear Bookings
+                                                        </button>
+                                                    </div>
                                                 </div>
 
 
-                                                <h3 className="text-2xl font-extrabold text-duo-red mb-6 border-b-2 border-duo-grayBorder pb-4"><i className="fa-solid fa-skull mr-2"></i> Danger Zone</h3>
-                                                <div className="bg-red-50 border-2 border-red-200 rounded-[2rem] p-6">
-                                                    <p className="text-sm font-bold text-duo-red mb-4">Click below to wipe all booking records in the system. Use at the start of a new semester. Cannot be undone!</p>
-                                                    <button onClick={handleClearSemesterData} className="w-full bg-duo-red text-white font-extrabold uppercase py-3 rounded-2xl shadow-duo-red active:shadow-none active:translate-y-[4px] transition-all tracking-wider">
-                                                        <i className="fa-solid fa-bomb mr-2"></i> Clear Bookings
-                                                    </button>
+                                                <div className="flex-1">
+                                                    <h3 className="text-2xl font-extrabold text-duo-text mb-6 border-b-2 border-duo-grayBorder pb-4">Security</h3>
+                                                    <div className="bg-duo-grayLight border-2 border-duo-grayBorder rounded-[2rem] p-6">
+                                                        <h4 className="font-extrabold text-duo-text mb-4 text-lg">Admin Password</h4>
+                                                        <form onSubmit={handleAdminPwdChange} className="space-y-4">
+                                                            <div><label className="block text-xs font-extrabold text-gray-500 uppercase tracking-wider mb-2">Current</label><input required type="password" value={adminPwdForm.current} onChange={e => setAdminPwdForm({...adminPwdForm, current: e.target.value})} className="w-full px-4 py-3 bg-white border-2 border-duo-grayBorder rounded-xl focus:border-duo-blue outline-none font-bold text-duo-text" /></div>
+                                                            <div><label className="block text-xs font-extrabold text-gray-500 uppercase tracking-wider mb-2">New</label><input required type="password" value={adminPwdForm.new} onChange={e => setAdminPwdForm({...adminPwdForm, new: e.target.value})} className="w-full px-4 py-3 bg-white border-2 border-duo-grayBorder rounded-xl focus:border-duo-blue outline-none font-bold text-duo-text" /></div>
+                                                            <div><label className="block text-xs font-extrabold text-gray-500 uppercase tracking-wider mb-2">Confirm</label><input required type="password" value={adminPwdForm.confirm} onChange={e => setAdminPwdForm({...adminPwdForm, confirm: e.target.value})} className="w-full px-4 py-3 bg-white border-2 border-duo-grayBorder rounded-xl focus:border-duo-blue outline-none font-bold text-duo-text" /></div>
+                                                            <button type="submit" className="w-full mt-2 bg-duo-text text-white font-extrabold uppercase py-3 rounded-2xl shadow-[0_4px_0_0_#2b2b2b] hover:bg-black active:shadow-none active:translate-y-[4px] transition-all tracking-wider">Update</button>
+                                                        </form>
+                                                    </div>
                                                 </div>
                                             </div>
-
-
-                                            <div className="flex-1">
-                                                <h3 className="text-2xl font-extrabold text-duo-text mb-6 border-b-2 border-duo-grayBorder pb-4">Security</h3>
-                                                <div className="bg-duo-grayLight border-2 border-duo-grayBorder rounded-[2rem] p-6">
-                                                    <h4 className="font-extrabold text-duo-text mb-4 text-lg">Admin Password</h4>
-                                                    <form onSubmit={handleAdminPwdChange} className="space-y-4">
-                                                        <div><label className="block text-xs font-extrabold text-gray-500 uppercase tracking-wider mb-2">Current</label><input required type="password" value={adminPwdForm.current} onChange={e => setAdminPwdForm({...adminPwdForm, current: e.target.value})} className="w-full px-4 py-3 bg-white border-2 border-duo-grayBorder rounded-xl focus:border-duo-blue outline-none font-bold text-duo-text" /></div>
-                                                        <div><label className="block text-xs font-extrabold text-gray-500 uppercase tracking-wider mb-2">New</label><input required type="password" value={adminPwdForm.new} onChange={e => setAdminPwdForm({...adminPwdForm, new: e.target.value})} className="w-full px-4 py-3 bg-white border-2 border-duo-grayBorder rounded-xl focus:border-duo-blue outline-none font-bold text-duo-text" /></div>
-                                                        <div><label className="block text-xs font-extrabold text-gray-500 uppercase tracking-wider mb-2">Confirm</label><input required type="password" value={adminPwdForm.confirm} onChange={e => setAdminPwdForm({...adminPwdForm, confirm: e.target.value})} className="w-full px-4 py-3 bg-white border-2 border-duo-grayBorder rounded-xl focus:border-duo-blue outline-none font-bold text-duo-text" /></div>
-                                                        <button type="submit" className="w-full mt-2 bg-duo-text text-white font-extrabold uppercase py-3 rounded-2xl shadow-[0_4px_0_0_#2b2b2b] hover:bg-black active:shadow-none active:translate-y-[4px] transition-all tracking-wider">Update</button>
-                                                    </form>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    )}
+                                        )}
+                                    </div>
                                 </div>
                             </div>
                         )}
                         
                         {/* --- View: Print Selection --- */}
                         {currentView === 'print' && (
-                            <div className="bg-white rounded-[2rem] border-2 border-duo-grayBorder shadow-duo-card p-8 animate-[fadeIn_0.3s_ease-out]">
-                                <h2 className="text-3xl font-extrabold text-duo-text mb-2"><i className="fa-solid fa-print text-duo-blue mr-3"></i>Print Records</h2>
-                                <p className="font-bold text-gray-500 mb-8 border-b-2 border-duo-grayBorder pb-4">Week selected: <span className="text-duo-blue font-extrabold px-2 py-1 bg-blue-50 rounded-lg">Week {selectedWeek}</span></p>
-                                
-                                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 mb-8">
-                                    {sortedAllCarts.map(([name, data]) => {
-                                        const isSelected = printSelection.includes(name);
-                                        return (
-                                            <div key={name} onClick={() => setPrintSelection(prev => isSelected ? prev.filter(n => n !== name) : [...prev, name])} 
-                                                className={`p-4 rounded-2xl border-4 cursor-pointer text-center font-extrabold transition-all ${isSelected ? 'border-duo-blue bg-blue-50 text-duo-blue' : 'border-duo-grayBorder text-gray-400 hover:bg-gray-50'}`}>
-                                                {name}
-                                                {isSelected && <i className="fa-solid fa-circle-check block mt-2 text-xl"></i>}
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                                <div className="flex justify-end gap-4">
-                                    <button onClick={() => window.print()} disabled={printSelection.length===0} className="px-8 py-4 bg-duo-blue text-white font-extrabold uppercase tracking-wider rounded-2xl shadow-[0_4px_0_0_#1899d6] active:shadow-none active:translate-y-[4px] disabled:opacity-50 disabled:cursor-not-allowed transition-all text-lg">
-                                        Start Printing ({printSelection.length})
+                            <div className="animate-[fadeIn_0.3s_ease-out]">
+                                <div className="mb-6 flex items-center justify-between">
+                                    <button onClick={goBack} className="text-gray-400 font-extrabold uppercase tracking-wider hover:text-duo-text transition-colors flex items-center border-2 border-duo-grayBorder px-4 py-2 rounded-xl bg-white hover:bg-gray-50">
+                                        <i className="fa-solid fa-arrow-left mr-2"></i> Back
                                     </button>
+                                </div>
+                                <div className="bg-white rounded-[2rem] border-2 border-duo-grayBorder shadow-duo-card p-8">
+                                    <h2 className="text-3xl font-extrabold text-duo-text mb-2"><i className="fa-solid fa-print text-duo-blue mr-3"></i>Print Records</h2>
+                                    <p className="font-bold text-gray-500 mb-8 border-b-2 border-duo-grayBorder pb-4">Week selected: <span className="text-duo-blue font-extrabold px-2 py-1 bg-blue-50 rounded-lg">Week {selectedWeek}</span></p>
+                                    
+                                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 mb-8">
+                                        {sortedAllCarts.map(([name, data]) => {
+                                            const isSelected = printSelection.includes(name);
+                                            return (
+                                                <div key={name} onClick={() => setPrintSelection(prev => isSelected ? prev.filter(n => n !== name) : [...prev, name])} 
+                                                    className={`p-4 rounded-2xl border-4 cursor-pointer text-center font-extrabold transition-all ${isSelected ? 'border-duo-blue bg-blue-50 text-duo-blue' : 'border-duo-grayBorder text-gray-400 hover:bg-gray-50'}`}>
+                                                    {name}
+                                                    {isSelected && <i className="fa-solid fa-circle-check block mt-2 text-xl"></i>}
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                    <div className="flex justify-end gap-4">
+                                        <button onClick={() => window.print()} disabled={printSelection.length===0} className="px-8 py-4 bg-duo-blue text-white font-extrabold uppercase tracking-wider rounded-2xl shadow-[0_4px_0_0_#1899d6] active:shadow-none active:translate-y-[4px] disabled:opacity-50 disabled:cursor-not-allowed transition-all text-lg">
+                                            Start Printing ({printSelection.length})
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
                         )}
@@ -1670,6 +1762,39 @@
                                     <button onClick={() => setConfirmModal({ isOpen: false, message: '', onConfirm: null })} className="flex-1 bg-white border-2 border-duo-grayBorder text-gray-400 font-extrabold uppercase py-4 rounded-2xl shadow-duo-gray active:shadow-none active:translate-y-[4px] transition-all tracking-wider text-sm">Cancel</button>
                                     <button onClick={() => { confirmModal.onConfirm(); setConfirmModal({ isOpen: false, message: '', onConfirm: null }); }} className="flex-1 bg-duo-red text-white font-extrabold uppercase py-4 rounded-2xl shadow-duo-red active:shadow-none active:translate-y-[4px] transition-all tracking-wider text-sm">Confirm</button>
                                 </div>
+                            </div>
+                        </div>
+                    )}
+
+
+                    {/* User Change Password Modal */}
+                    {userPwdModal.isOpen && (
+                        <div className="fixed inset-0 bg-slate-900/60 flex items-center justify-center p-4 z-[70] backdrop-blur-sm no-print">
+                            <div className="bg-white rounded-[2rem] border-2 border-duo-grayBorder shadow-2xl w-full max-w-sm overflow-hidden animate-[fadeIn_0.15s_ease-out]">
+                                <div className="p-6 border-b-2 border-duo-grayBorder flex justify-between items-center bg-duo-grayLight">
+                                    <h3 className="font-extrabold text-xl text-duo-text"><i className="fa-solid fa-key text-duo-yellow mr-2"></i>Change Password</h3>
+                                    <button onClick={() => setUserPwdModal({ isOpen: false, current: '', new: '', confirm: '' })} className="w-8 h-8 flex items-center justify-center bg-white border-2 border-duo-grayBorder rounded-full text-gray-400 hover:text-duo-text transition-colors">
+                                        <i className="fa-solid fa-times"></i>
+                                    </button>
+                                </div>
+                                <form onSubmit={handleUserPwdChange} className="p-6 space-y-4">
+                                    <div>
+                                        <label className="block text-xs font-extrabold text-gray-400 uppercase tracking-wider mb-1">Current Password</label>
+                                        <input required type="password" value={userPwdModal.current} onChange={e => setUserPwdModal({...userPwdModal, current: e.target.value})} className="w-full px-4 py-3 bg-white border-2 border-duo-grayBorder rounded-xl focus:border-duo-blue outline-none font-bold" />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-extrabold text-gray-400 uppercase tracking-wider mb-1">New Password</label>
+                                        <input required type="password" minLength="6" value={userPwdModal.new} onChange={e => setUserPwdModal({...userPwdModal, new: e.target.value})} placeholder="Min 6 chars" className="w-full px-4 py-3 bg-white border-2 border-duo-grayBorder rounded-xl focus:border-duo-blue outline-none font-bold" />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-extrabold text-gray-400 uppercase tracking-wider mb-1">Confirm Password</label>
+                                        <input required type="password" minLength="6" value={userPwdModal.confirm} onChange={e => setUserPwdModal({...userPwdModal, confirm: e.target.value})} className="w-full px-4 py-3 bg-white border-2 border-duo-grayBorder rounded-xl focus:border-duo-blue outline-none font-bold" />
+                                    </div>
+                                    <div className="flex gap-3 pt-4 border-t-2 border-duo-grayBorder mt-4">
+                                        <button type="button" onClick={() => setUserPwdModal({ isOpen: false, current: '', new: '', confirm: '' })} className="flex-1 bg-white border-2 border-duo-grayBorder text-gray-400 font-extrabold uppercase py-3 rounded-2xl shadow-duo-gray active:shadow-none active:translate-y-[4px] transition-all">Cancel</button>
+                                        <button type="submit" className="flex-[2] bg-duo-yellow text-white font-extrabold uppercase py-3 rounded-2xl shadow-[0_4px_0_0_#e5b400] hover:bg-[#e5b400] active:shadow-none active:translate-y-[4px] transition-all">Save</button>
+                                    </div>
+                                </form>
                             </div>
                         </div>
                     )}
