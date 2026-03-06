@@ -921,7 +921,7 @@
                                         <>
                                             <div>
                                                 <label className="block text-xs font-extrabold text-duo-text/50 uppercase tracking-wider mb-2">Email Address</label>
-                                                <input required type="email" value={loginForm.email} onChange={e => setLoginForm({...loginForm, email: e.target.value})} className="w-full px-5 py-4 bg-duo-grayLight border-2 border-duo-grayBorder rounded-2xl focus:bg-white focus:border-duo-blue outline-none font-bold text-duo-text transition-all" placeholder="name@school.edu" />
+                                                <input required type="email" value={loginForm.email} onChange={e => setLoginForm({...loginForm, email: e.target.value})} className="w-full px-5 py-4 bg-duo-grayLight border-2 border-duo-grayBorder rounded-2xl focus:bg-white focus:border-duo-blue outline-none font-bold text-duo-text transition-all" placeholder="name@ibsh.tw" />
                                             </div>
                                             <div>
                                                 <label className="block text-xs font-extrabold text-duo-text/50 uppercase tracking-wider mb-2 flex justify-between">
@@ -1592,47 +1592,72 @@
                     <tr>
                         {currentDays.map(d => (
                             <React.Fragment key={d + "-sub"}>
-                                <th className="text-[11px] py-1 bg-[#fafafa]">Class/Teacher</th>
-                                <th className="text-[11px] py-1 bg-[#fafafa]" style={{ width: '40px' }}>check-out</th>
-                                <th className="text-[11px] py-1 bg-[#fafafa]" style={{ width: '40px' }}>return</th>
+                                <th className="text-[11px] py-1 bg-[#fafafa]">Teacher</th>
+                                <th className="text-[11px] py-1 bg-[#fafafa]" style={{ width: '40px' }}>Check-out</th>
+                                <th className="text-[11px] py-1 bg-[#fafafa]" style={{ width: '40px' }}>Return</th>
                             </React.Fragment>
                         ))}
                     </tr>
                 </thead>
                 <tbody>
-                    {periods.map(period => (
-                        <tr key={period.id}>
-                            <td><strong className="text-[13px]">{period.name}</strong><br/><span className="text-[10px] text-gray-600">{period.time}</span></td>
-                            {currentDays.map((day, dayIdx) => {
-                                if (period.id === 'lunch') {
-                                    return <td key={dayIdx} colSpan="3" className="print-lunch font-bold text-center">Not Avaliable for Lunch / Noon Quiet Time</td>;
-                                }
-                                
-                                const booking = cartData[cartName].schedule[`w${selectedWeek}_d${dayIdx}_p${period.id}`];
-                                
-                                return (
-                                    <React.Fragment key={dayIdx}>
-                                        <td className="text-left align-top p-1.5 leading-tight">
-                                            {booking ? (
-                                                <div>
-                                                    <span className="text-[10px] text-gray-600">{booking.className}</span><br/>
-                                                    <strong className="text-[12px]">{booking.name}</strong>
-                                                </div>
-                                            ) : ""}
-                                        </td>
-                                        <td></td>
-                                        <td></td>
-                                    </React.Fragment>
-                                );
-                            })}
-                        </tr>
+    {periods.map(period => (
+        <React.Fragment key={period.id}>
+            {/* 1. 渲染原本的課程列與午餐列 */}
+            <tr>
+                <td>
+                    <strong className="text-[13px]">{period.name}</strong><br/>
+                    <span className="text-[10px] text-gray-600">{period.time}</span>
+                </td>
+                {currentDays.map((day, dayIdx) => {
+                    // 如果是午餐，維持原本的跨三欄顯示
+                    if (period.id === 'lunch') {
+                        return <td key={dayIdx} colSpan="3" className="print-lunch font-bold text-center">Not Avaliable for Lunch</td>;
+                    }
+                    
+                    const booking = cartData[cartName].schedule[`w${selectedWeek}_d${dayIdx}_p${period.id}`];
+                    
+                    return (
+                        <React.Fragment key={dayIdx}>
+                            <td className="text-left align-top p-1.5 leading-tight">
+                                {booking ? (
+                                    <div>
+                                        <span className="text-[10px] text-gray-600">{booking.className}</span><br/>
+                                        <strong className="text-[12px]">{booking.name}</strong>
+                                    </div>
+                                ) : ""}
+                            </td>
+                            <td></td>
+                            <td></td>
+                        </React.Fragment>
+                    );
+                })}
+            </tr>
+
+
+            {/* 2. 當遇到午餐時，在下方額外插入一列標題列 */}
+            {period.id === 'lunch' && (
+                <tr>
+                    {/* 左側加入 Period 標題 */}
+                    <th className="text-[11px] py-1 bg-[#fafafa]">Period</th>
+                    
+                    {/* 依照天數重新渲染一次 Teacher、Check-out、Return (首字母已大寫) */}
+                    {currentDays.map(d => (
+                        <React.Fragment key={d + "-sub-afternoon"}>
+                            <th className="text-[11px] py-1 bg-[#fafafa]">Teacher</th>
+                            <th className="text-[11px] py-1 bg-[#fafafa]" style={{ width: '40px' }}>Check-out</th>
+                            <th className="text-[11px] py-1 bg-[#fafafa]" style={{ width: '40px' }}>Return</th>
+                        </React.Fragment>
                     ))}
-                </tbody>
+                </tr>
+            )}
+        </React.Fragment>
+    ))}
+</tbody>
+
+
             </table>
             
             <div className="mt-auto pt-3 pb-2 flex justify-between px-8 text-sm font-bold">
-                <p>Notes: _________________________________________</p>
-                <p>Admin Signature: _________________________</p>
             </div>
         </div>
     ))}
