@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>IBSH Chromebook Carts Reservation</title>
     
-    <!-- 引入 Google Fonts: Nunito 圓體字型，完美契合 Duolingo 風格 -->
+    <!-- 引入 Google Fonts: Nunito 圓體字型 -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
@@ -18,27 +18,17 @@
                 extend: {
                     colors: {
                         duo: {
-                            green: '#58cc02',
-                            greenDark: '#58a700',
-                            blue: '#1cb0f6',
-                            blueDark: '#1899d6',
-                            red: '#ff4b4b',
-                            redDark: '#ea2b2b',
-                            yellow: '#ffc800',
-                            yellowDark: '#e5b400',
-                            text: '#4b4b4b',
-                            grayLight: '#f7f7f7',
-                            grayBorder: '#e5e5e5'
+                            green: '#58cc02', greenDark: '#58a700',
+                            blue: '#1cb0f6', blueDark: '#1899d6',
+                            red: '#ff4b4b', redDark: '#ea2b2b',
+                            yellow: '#ffc800', yellowDark: '#e5b400',
+                            text: '#4b4b4b', grayLight: '#f7f7f7', grayBorder: '#e5e5e5'
                         }
                     },
-                    fontFamily: {
-                        sans: ['Nunito', 'sans-serif'],
-                    },
+                    fontFamily: { sans: ['Nunito', 'sans-serif'] },
                     boxShadow: {
-                        'duo-green': '0 4px 0 0 #58a700',
-                        'duo-blue': '0 4px 0 0 #1899d6',
-                        'duo-red': '0 4px 0 0 #ea2b2b',
-                        'duo-gray': '0 4px 0 0 #e5e5e5',
+                        'duo-green': '0 4px 0 0 #58a700', 'duo-blue': '0 4px 0 0 #1899d6',
+                        'duo-red': '0 4px 0 0 #ea2b2b', 'duo-gray': '0 4px 0 0 #e5e5e5',
                         'duo-card': '0 6px 0 0 #e5e5e5',
                     }
                 }
@@ -52,8 +42,6 @@
     <!-- 引入 React 與 ReactDOM -->
     <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
-    
-    <!-- 引入 Babel 以在瀏覽器中編譯 JSX -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
 
@@ -62,80 +50,43 @@
             @page { size: A4 landscape; margin: 10mm; }
             body { background: white; margin: 0; padding: 0; }
             .no-print { display: none !important; }
-            
             .print-only { display: block !important; width: 100%; }
-            .page-break { 
-                page-break-after: always; 
-                height: 96vh; 
-                display: flex; 
-                flex-direction: column; 
-            }
-            
-            table { 
-                width: 100%; 
-                flex-grow: 1; 
-                border-collapse: collapse; 
-                table-layout: fixed; 
-            }
-            
-            th, td { 
-                border: 1px solid #000; 
-                text-align: center; 
-                vertical-align: middle; 
-                font-family: sans-serif; 
-                word-wrap: break-word; 
-                overflow: hidden;
-            }
-            
+            .page-break { page-break-after: always; height: 96vh; display: flex; flex-direction: column; }
+            table { width: 100%; flex-grow: 1; border-collapse: collapse; table-layout: fixed; }
+            th, td { border: 1px solid #000; text-align: center; vertical-align: middle; font-family: sans-serif; word-wrap: break-word; overflow: hidden; }
             th { background-color: #f3f4f6 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; font-weight: bold; }
             .col-period { width: 65px; } 
             .print-lunch { background-color: #e5e7eb !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; letter-spacing: 2px; font-size: 14px; }
         }
-        
         .hide-scrollbar::-webkit-scrollbar { display: none; }
         .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
     </style>      
-   </head>
+</head>
 <body class="bg-white font-sans text-duo-text selection:bg-duo-green selection:text-white">
     
-    <!-- 應用程式根節點 -->
     <div id="root"></div>
 
 
-    <!-- Firebase 模組載入 -->
+    <!-- Firebase 模組載入 (新增 GoogleAuthProvider, signInWithPopup, signOut, getDoc) -->
     <script type="module">
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js';
-        import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js';
-        import { getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot, runTransaction } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
+        import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken, GoogleAuthProvider, signInWithPopup, signOut } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js';
+        import { getFirestore, collection, doc, setDoc, getDoc, deleteDoc, onSnapshot, runTransaction } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
 
 
         window.fbModules = {
-            initializeApp, getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken,
-            getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot, runTransaction
+            initializeApp, getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken, GoogleAuthProvider, signInWithPopup, signOut,
+            getFirestore, collection, doc, setDoc, getDoc, deleteDoc, onSnapshot, runTransaction
         };
         window.dispatchEvent(new Event('firebaseLoaded'));
     </script>
 
 
-
-
-    <!-- React 應用程式邏輯 -->
     <script type="text/babel">
         const { useState, useEffect } = React;
 
 
-        // 密碼雜湊加密函數 (SHA-256)
-        const sha256 = async (message) => {
-            const msgBuffer = new TextEncoder().encode(message);
-            const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
-            const hashArray = Array.from(new Uint8Array(hashBuffer));
-            return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-        };
-
-
-        // Firebase 環境偵測與設定
         const isCanvasEnv = typeof __firebase_config !== 'undefined';
-        
         const defaultFirebaseConfig = {
             apiKey: "AIzaSyC13KFTs6QifMQc0HVsUstfjAmLbpoF0t4",
             authDomain: "cartreserver.firebaseapp.com",
@@ -158,23 +109,12 @@
         };
 
 
-        // 注意：為了向下相容，密碼維持原設定，新註冊的才會被加密
-        const initialUsers = {
-            "bianca@school.edu": { name: "Bianca", email: "bianca@school.edu", password: "password123", defaultClass: "11A", customClass: "" },
-            "yvonne@school.edu": { name: "Yvonne", email: "yvonne@school.edu", password: "password123", defaultClass: "11B", customClass: "" }
-        };
-
-
         const periods = [
-            { id: 1, time: "8:10-9:00", name: "Period 1" },
-            { id: 2, time: "9:10-10:00", name: "Period 2" },
-            { id: 3, time: "10:10-11:00", name: "Period 3" },
-            { id: 4, time: "11:10-12:00", name: "Period 4" },
+            { id: 1, time: "8:10-9:00", name: "Period 1" }, { id: 2, time: "9:10-10:00", name: "Period 2" },
+            { id: 3, time: "10:10-11:00", name: "Period 3" }, { id: 4, time: "11:10-12:00", name: "Period 4" },
             { id: "lunch", time: "12:00-13:00", name: "Lunch Break" },
-            { id: 5, time: "13:10-14:00", name: "Period 5" },
-            { id: 6, time: "14:10-15:00", name: "Period 6" },
-            { id: 7, time: "15:20-16:10", name: "Period 7" },
-            { id: 8, time: "16:20-17:10", name: "Period 8" }
+            { id: 5, time: "13:10-14:00", name: "Period 5" }, { id: 6, time: "14:10-15:00", name: "Period 6" },
+            { id: 7, time: "15:20-16:10", name: "Period 7" }, { id: 8, time: "16:20-17:10", name: "Period 8" }
         ];
 
 
@@ -183,9 +123,7 @@
         classOptions.push("Other (Specify)");
 
 
-        const getTimestamp = () => {
-            return new Date().toLocaleString('en-US', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
-        };
+        const getTimestamp = () => new Date().toLocaleString('en-US', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
 
 
         function App() {
@@ -201,10 +139,10 @@
 
 
             const [currentView, setCurrentView] = useState('home');
-            const [viewHistory, setViewHistory] = useState(['home']); // 新增：歷史紀錄狀態
+            const [viewHistory, setViewHistory] = useState(['home']);
             const [activeFilter, setActiveFilter] = useState('All');
             const [activeLocationFilter, setActiveLocationFilter] = useState('All'); 
-            const [searchQuery, setSearchQuery] = useState(''); // 新增：搜尋框狀態
+            const [searchQuery, setSearchQuery] = useState('');
             const [selectedCart, setSelectedCart] = useState(null);
             const [adminTab, setAdminTab] = useState('carts');
             
@@ -213,29 +151,22 @@
 
 
             const [selectedWeek, setSelectedWeek] = useState(1);
-            const [currentRealWeek, setCurrentRealWeek] = useState(1); // 記錄真實週數
+            const [currentRealWeek, setCurrentRealWeek] = useState(1);
             const [allowSaturday, setAllowSaturday] = useState(false);
             const [hasAutoSetWeek, setHasAutoSetWeek] = useState(false);
             const currentDays = allowSaturday ? [...baseDays, "Saturday"] : baseDays;
 
 
             const [cartData, setCartData] = useState({});
-            const [usersDB, setUsersDB] = useState({});
+            const [usersDB, setUsersDB] = useState({}); // 只有管理員才會拉取
             const [activityLogs, setActivityLogs] = useState([]); 
             
             const [currentUser, setCurrentUser] = useState(null);
             const [isAdmin, setIsAdmin] = useState(false);
             
-            const [authMode, setAuthMode] = useState('login');
-            const [loginForm, setLoginForm] = useState({ email: '', password: '' });
-            const [regForm, setRegForm] = useState({ name: '', email: '', password: '', classType: '1A', customClass: '' });
-            const [adminPwd, setAdminPwd] = useState('');
-            
-            const [systemAdminPwd, setSystemAdminPwd] = useState('admin'); // 預設 admin，可改成加密版
-            const [adminPwdForm, setAdminPwdForm] = useState({ current: '', new: '', confirm: '' });
-
-
-            const [userPwdModal, setUserPwdModal] = useState({ isOpen: false, current: '', new: '', confirm: '' });
+            // 簡化後的 Auth 狀態
+            const [authMode, setAuthMode] = useState('auth'); // 'auth' | 'complete_profile'
+            const [regForm, setRegForm] = useState({ name: '', email: '', classType: '1A', customClass: '' });
 
 
             const [bookingModal, setBookingModal] = useState({ isOpen: false, dayIdx: null, periodId: null, existingBooking: null, isEditing: false, isBatch: false });
@@ -245,19 +176,16 @@
             const [printSelection, setPrintSelection] = useState([]);
 
 
-            // 批次預約狀態
             const [isBatchMode, setIsBatchMode] = useState(false);
-            const [batchSelection, setBatchSelection] = useState([]); // [{dayIdx, periodId, slotId}]
+            const [batchSelection, setBatchSelection] = useState([]);
 
 
-            // My Bookings 視圖模式
-            const [myBookingsView, setMyBookingsView] = useState('list'); // 'list' | 'calendar'
+            const [myBookingsView, setMyBookingsView] = useState('list');
 
 
-            // --- 新增：導覽輔助函數 (處理上一頁邏輯) ---
             const changeView = (newView) => {
                 if (newView === currentView) return;
-                setViewHistory(prev => [...prev, newView]); // 將新頁面推入歷史紀錄
+                setViewHistory(prev => [...prev, newView]);
                 setCurrentView(newView);
             };
 
@@ -265,21 +193,20 @@
             const goBack = () => {
                 if (viewHistory.length > 1) {
                     const newHistory = [...viewHistory];
-                    newHistory.pop(); // 移除當前頁面
-                    const prevView = newHistory[newHistory.length - 1]; // 取得上一個頁面
+                    newHistory.pop();
+                    const prevView = newHistory[newHistory.length - 1];
                     setViewHistory(newHistory);
                     setCurrentView(prevView);
                 } else {
-                    setCurrentView('home'); // 如果沒有歷史紀錄了，就回首頁防呆
+                    setCurrentView('home');
                 }
             };
 
 
             const goHome = () => {
-                setViewHistory(['home']); // 重置歷史紀錄
+                setViewHistory(['home']);
                 setCurrentView('home');
             };
-            // ---------------------------------------
 
 
             useEffect(() => {
@@ -315,6 +242,7 @@
                     }
 
 
+                    // 全局共用的資料載入 (不包含 Users)
                     fb.onAuthStateChanged(auth, (user) => {
                         if (!user) return;
                         
@@ -330,26 +258,6 @@
                         }, err => console.error("Firestore Error:", err));
 
 
-                        fb.onSnapshot(getCol('users'), (snap) => {
-                            const newUsers = {};
-                            snap.forEach(d => { newUsers[d.id] = d.data(); });
-                            if (snap.empty && !window.__seededUsers) {
-                                window.__seededUsers = true;
-                                Object.entries(initialUsers).forEach(([k, v]) => fb.setDoc(getDocRef('users', k), v).catch(e => {}));
-                            } else {
-                                setUsersDB(newUsers);
-                            }
-                        }, err => console.error("Firestore Error:", err));
-
-
-                        fb.onSnapshot(getCol('logs'), (snap) => {
-                            const newLogs = [];
-                            snap.forEach(d => { newLogs.push({ id: d.id, ...d.data() }); });
-                            newLogs.sort((a, b) => b.id - a.id);
-                            setActivityLogs(newLogs);
-                        }, err => console.error("Firestore Error:", err));
-
-
                         fb.onSnapshot(getDocRef('settings', 'main'), (snap) => {
                             if (snap.exists()) {
                                 const data = snap.data();
@@ -357,12 +265,10 @@
                                     setSemesterConfig({ ...data.semesterConfig, maxAdvanceWeeks: data.semesterConfig.maxAdvanceWeeks || 2 });
                                     setTempSemesterConfig({ ...data.semesterConfig, maxAdvanceWeeks: data.semesterConfig.maxAdvanceWeeks || 2 });
                                 }
-                                if (data.systemAdminPwd) setSystemAdminPwd(data.systemAdminPwd);
                                 if (data.allowSaturday !== undefined) setAllowSaturday(data.allowSaturday);
                             } else {
                                 fb.setDoc(getDocRef('settings', 'main'), {
                                     semesterConfig: { startDate: '2026-02-23', totalWeeks: 19, maxAdvanceWeeks: 2 },
-                                    systemAdminPwd: 'admin',
                                     allowSaturday: false
                                 }).catch(e => {});
                             }
@@ -377,7 +283,30 @@
             }, []);
 
 
-            // 計算當前真實週數
+            // 只有管理員才拉取 Users 與 Logs，減少頻寬與資安風險
+            useEffect(() => {
+                if (!firebaseReady || !dbRefs || !isAdmin) return;
+
+
+                const unsubUsers = dbRefs.fb.onSnapshot(dbRefs.getCol('users'), (snap) => {
+                    const newUsers = {};
+                    snap.forEach(d => { newUsers[d.id] = d.data(); });
+                    setUsersDB(newUsers);
+                });
+
+
+                const unsubLogs = dbRefs.fb.onSnapshot(dbRefs.getCol('logs'), (snap) => {
+                    const newLogs = [];
+                    snap.forEach(d => { newLogs.push({ id: d.id, ...d.data() }); });
+                    newLogs.sort((a, b) => b.id - a.id);
+                    setActivityLogs(newLogs);
+                });
+
+
+                return () => { unsubUsers(); unsubLogs(); };
+            }, [firebaseReady, dbRefs, isAdmin]);
+
+
             useEffect(() => {
                 if (firebaseReady) {
                     const now = new Date();
@@ -404,16 +333,92 @@
             }, [firebaseReady, semesterConfig, hasAutoSetWeek]);
 
 
-            // 切換週數時清空批次選擇
             useEffect(() => {
                 if (selectedWeek > semesterConfig.totalWeeks) setSelectedWeek(semesterConfig.totalWeeks);
                 setBatchSelection([]);
             }, [selectedWeek, semesterConfig.totalWeeks]);
 
 
+            // =============== Google 登入核心邏輯 ===============
+            const handleGoogleLogin = async () => {
+                const auth = dbRefs.auth;
+                const provider = new dbRefs.fb.GoogleAuthProvider();
+                
+                // 強制每次登入都選擇帳號，不讓瀏覽器自動記錄跳過
+                provider.setCustomParameters({ prompt: 'select_account' });
+
+
+                try {
+                    const result = await dbRefs.fb.signInWithPopup(auth, provider);
+                    const googleUser = result.user;
+                    const userEmail = googleUser.email;
+
+
+                    // 檢查是否為舊用戶
+                    const userDocRef = dbRefs.getDocRef('users', userEmail);
+                    const userDoc = await dbRefs.fb.getDoc(userDocRef);
+
+
+                    if (userDoc.exists()) {
+                        // 舊用戶：無縫接軌
+                        const userData = userDoc.data();
+                        setCurrentUser(userData);
+                        
+                        // 判斷是否為管理員 (資料庫標記 或 指定信箱作為後門)
+                        const isUserAdmin = userData.isAdmin === true || userEmail.toLowerCase() === 'ptaopenhour@ibsh.tw';
+                        setIsAdmin(isUserAdmin);
+                        
+                        goHome();
+                    } else {
+                        // 新用戶：前往補全資料
+                        setRegForm({
+                            name: googleUser.displayName || '',
+                            email: userEmail,
+                            classType: '1A',
+                            customClass: ''
+                        });
+                        setAuthMode('complete_profile');
+                    }
+                } catch (error) {
+                    console.error("Google Login Error:", error);
+                    if (error.code === 'auth/popup-blocked') {
+                        showAlert("彈出視窗被瀏覽器阻擋。\n請允許彈出視窗，或在新分頁中開啟此網頁。");
+                    } else if (error.code !== 'auth/popup-closed-by-user') {
+                        showAlert("登入失敗，請稍後再試。\n" + error.message);
+                    }
+                }
+            };
+
+
+            const handleCompleteProfile = async (e) => {
+                e.preventDefault();
+                const newUser = {
+                    name: regForm.name.trim(),
+                    email: regForm.email.trim(),
+                    defaultClass: regForm.classType,
+                    customClass: regForm.customClass,
+                    isAdmin: regForm.email.toLowerCase() === 'ptaopenhour@ibsh.tw' // 指定管理員帳號
+                };
+                
+                await dbRefs.fb.setDoc(dbRefs.getDocRef('users', newUser.email), newUser);
+                setCurrentUser(newUser);
+                setIsAdmin(newUser.isAdmin);
+                addLog("User Registration", "System", `Registered via Google: ${newUser.email}`, newUser.name);
+                goHome();
+            };
+
+
+            const handleLogout = () => {
+                dbRefs.fb.signOut(dbRefs.auth).then(() => {
+                    // 登出後直接重新整理網頁，確保所有狀態徹底清空
+                    window.location.reload();
+                });
+            };
+            // ===================================================
+
+
             const sortedAllCarts = Object.entries(cartData).sort((a, b) => (a[1].order || 0) - (b[1].order || 0));
             
-            // 結合各種過濾器（包含新加入的搜尋功能）
             const filteredCarts = sortedAllCarts
                 .filter(([name, data]) => activeFilter === 'All' || data.type === activeFilter)
                 .filter(([name, data]) => activeLocationFilter === 'All' || data.location === activeLocationFilter)
@@ -486,101 +491,6 @@
             };
 
 
-            const handleAuthSubmit = async (e) => {
-                e.preventDefault();
-                if (authMode === 'admin') {
-                    // Admin 密碼驗證 (向下相容：允許明文比對或加密比對)
-                    const hashedInput = await sha256(adminPwd);
-                    if (adminPwd === systemAdminPwd || hashedInput === systemAdminPwd) {
-                        setIsAdmin(true);
-                        setCurrentUser({ name: 'Admin', email: 'admin@school.edu', defaultClass: 'Admin', customClass: '' });
-                        goHome();
-                        setAdminPwd(''); 
-                    } else {
-                        showAlert("Incorrect admin password!");
-                    }
-                } else if (authMode === 'login') {
-                    const user = usersDB[loginForm.email];
-                    if (user) {
-                        const hashedInput = await sha256(loginForm.password);
-                        // 向下相容機制：舊帳號可能是明文，新帳號是加密文
-                        if (user.password === loginForm.password || user.password === hashedInput) {
-                            setCurrentUser(user);
-                            goHome();
-                            return;
-                        }
-                    }
-                    showAlert("Incorrect email or password!\nPlease contact the admin if you forgot it.");
-                } else if (authMode === 'register') {
-                    if (usersDB[regForm.email]) {
-                        showAlert("This email is already registered!");
-                        return;
-                    }
-                    const hashedPassword = await sha256(regForm.password);
-                    const newUser = {
-                        name: regForm.name.trim(), email: regForm.email.trim(), password: hashedPassword, defaultClass: regForm.classType, customClass: regForm.customClass
-                    };
-                    await dbRefs.fb.setDoc(dbRefs.getDocRef('users', newUser.email), newUser);
-                    setCurrentUser(newUser);
-                    addLog("User Registration", "System", `Registered email: ${newUser.email}`, newUser.name);
-                    goHome();
-                }
-            };
-
-
-            const handleAdminPwdChange = async (e) => {
-                e.preventDefault();
-                const hashedCurrent = await sha256(adminPwdForm.current);
-                if (adminPwdForm.current !== systemAdminPwd && hashedCurrent !== systemAdminPwd) return showAlert("Current password is incorrect!");
-                if (adminPwdForm.new !== adminPwdForm.confirm) return showAlert("New passwords do not match!");
-                if (adminPwdForm.new.length < 4) return showAlert("Password must be at least 4 characters long.");
-                
-                const hashedNew = await sha256(adminPwdForm.new);
-                await dbRefs.fb.setDoc(dbRefs.getDocRef('settings', 'main'), { systemAdminPwd: hashedNew }, { merge: true });
-                addLog("Change Password", "System", "Administrator password was updated");
-                showAlert("Admin password updated successfully!");
-                setAdminPwdForm({ current: '', new: '', confirm: '' });
-            };
-
-
-            const handleUserPwdChange = async (e) => {
-                e.preventDefault();
-                const { current, new: newPwd, confirm } = userPwdModal;
-                
-                // 檢查舊密碼 (向下相容：支援明文舊密碼與 SHA-256 新密碼)
-                const hashedCurrent = await sha256(current);
-                if (currentUser.password !== current && currentUser.password !== hashedCurrent) {
-                    return showAlert("Current password is incorrect! (目前密碼錯誤)");
-                }
-                // 檢查新密碼是否一致與長度
-                if (newPwd !== confirm) {
-                    return showAlert("New passwords do not match! (新密碼不一致)");
-                }
-                if (newPwd.length < 6) {
-                    return showAlert("Password must be at least 6 characters long.\n(密碼長度至少需要 6 個字元)");
-                }
-                
-                try {
-                    // 將新密碼加密並寫入資料庫
-                    const hashedNew = await sha256(newPwd);
-                    await dbRefs.fb.setDoc(dbRefs.getDocRef('users', currentUser.email), { 
-                        ...currentUser, 
-                        password: hashedNew 
-                    }, { merge: true });
-                    
-                    // 更新當下畫面中的使用者狀態
-                    setCurrentUser({ ...currentUser, password: hashedNew });
-                    
-                    addLog("Change Password", "System", "User changed their password", currentUser.name);
-                    showAlert("Password updated successfully! (密碼修改成功)");
-                    setUserPwdModal({ isOpen: false, current: '', new: '', confirm: '' });
-                } catch (err) {
-                    console.error(err);
-                    showAlert("Update failed. Please try again. (更新失敗，請稍後再試)");
-                }
-            };
-
-
             const handleSemesterConfigSave = async (e) => {
                 e.preventDefault();
                 await dbRefs.fb.setDoc(dbRefs.getDocRef('settings', 'main'), { semesterConfig: tempSemesterConfig }, { merge: true });
@@ -601,12 +511,10 @@
             };
 
 
-            const resetUserPassword = (email) => {
-                showConfirm(`Reset password for ${usersDB[email].name} to "123456"?`, async () => {
-                    const hashedResetPwd = await sha256("123456");
-                    await dbRefs.fb.setDoc(dbRefs.getDocRef('users', email), { ...usersDB[email], password: hashedResetPwd }, { merge: true });
-                    addLog("Reset Password", "System", `Admin reset password for ${email}`);
-                    showAlert("Password reset to 123456.");
+            const toggleUserAdmin = (email, currentStatus) => {
+                showConfirm(`Change admin status for ${usersDB[email].name} to ${!currentStatus}?`, async () => {
+                    await dbRefs.fb.setDoc(dbRefs.getDocRef('users', email), { isAdmin: !currentStatus }, { merge: true });
+                    addLog("Role Update", "System", `Admin toggled for ${email}`);
                 });
             };
 
@@ -619,12 +527,10 @@
             };
 
 
-            // 處理點擊格子：加入預約期限阻擋與批次選擇機制
             const handleSlotClick = (dayIdx, periodId, existingBooking) => {
                 if (periodId === 'lunch') return; 
 
 
-                // 檢查預約期限
                 const isPastLimit = !isAdmin && (selectedWeek > currentRealWeek + (semesterConfig.maxAdvanceWeeks || 2));
                 if (isPastLimit) {
                     showAlert(`⚠️ Booking Limit Exceeded\n\nTo ensure fairness, the system only allows bookings up to ${semesterConfig.maxAdvanceWeeks || 2} week(s) in advance.\nPlease try again closer to your desired date!`);
@@ -633,10 +539,8 @@
 
 
                 if (existingBooking) {
-                    // 如果已經被訂走，點擊就開啟預覽/編輯模式
                     setBookingModal({ isOpen: true, dayIdx, periodId, existingBooking, isEditing: false, isBatch: false });
                 } else {
-                    // 如果是空位
                     if (isBatchMode) {
                         const slotId = `w${selectedWeek}_d${dayIdx}_p${periodId}`;
                         setBatchSelection(prev => 
@@ -645,7 +549,6 @@
                                 : [...prev, { dayIdx, periodId, slotId }]
                         );
                     } else {
-                        // 單筆預約模式
                         setBookForm({ classType: currentUser.defaultClass, customClass: currentUser.customClass });
                         setBookingModal({ isOpen: true, dayIdx, periodId, existingBooking: null, isEditing: false, isBatch: false });
                     }
@@ -653,7 +556,6 @@
             };
 
 
-            // 執行真正的交易寫入邏輯
             const executeBookingTransaction = async (slotsToBook, finalClass) => {
                 const cartRef = dbRefs.getDocRef('carts', selectedCart);
 
@@ -668,7 +570,6 @@
                         const currentSchedule = currentData.schedule || {};
 
 
-                        // 檢查所有想要預約的格子是否已被搶走
                         for (const slot of slotsToBook) {
                             if (currentSchedule[slot.slotId]) {
                                 throw "SLOT_ALREADY_TAKEN"; 
@@ -686,7 +587,6 @@
                     });
 
 
-                    // 成功後的收尾
                     const details = slotsToBook.length === 1 
                         ? `Week ${selectedWeek} ${currentDays[slotsToBook[0].dayIdx]} P${slotsToBook[0].periodId} (${finalClass})`
                         : `Batch booked ${slotsToBook.length} slots for Week ${selectedWeek} (${finalClass})`;
@@ -710,14 +610,10 @@
             };
 
 
-            // 送出前檢查是否有跨車「衝堂」
             const checkConflictsAndSubmit = async () => {
                 const finalClass = bookForm.classType === 'Other (Specify)' ? bookForm.customClass : bookForm.classType;
-                
-                // 整理出這次想預約的所有 Slot ID
                 const slotsToBook = bookingModal.isBatch ? batchSelection : [{ dayIdx: bookingModal.dayIdx, periodId: bookingModal.periodId, slotId: `w${selectedWeek}_d${bookingModal.dayIdx}_p${bookingModal.periodId}` }];
                 
-                // 比對本地端資料：這個班級在同一個時間，是不是已經借了其他車？
                 const conflictingSlots = slotsToBook.filter(slot => {
                     return Object.entries(cartData).some(([cName, cData]) => {
                         return cName !== selectedCart && cData.schedule && cData.schedule[slot.slotId]?.className === finalClass;
@@ -861,6 +757,7 @@
             };
 
 
+            // ================= RENDER =================
             if (firebaseReady === 'auth-error') {
                 return (
                     <div className="min-h-screen bg-duo-grayLight flex flex-col items-center justify-center p-4">
@@ -868,16 +765,8 @@
                             <i className="fa-solid fa-triangle-exclamation text-duo-red text-6xl mb-4"></i>
                             <h2 className="text-2xl font-extrabold text-duo-text mb-4">Firebase Setup Incomplete</h2>
                             <p className="text-duo-text/80 mb-6 text-left leading-relaxed font-bold">
-                                Authentication is disabled in your Firebase console.<br/><br/>
-                                <span className="text-duo-blue uppercase tracking-wider text-sm">How to fix:</span><br/>
-                                1. Go to Firebase Console -> <strong>Authentication</strong>.<br/>
-                                2. Click <strong>Sign-in method</strong>.<br/>
-                                3. Enable <strong>Anonymous</strong> provider.<br/>
-                                4. Save and refresh this page.
+                                Authentication is disabled in your Firebase console.<br/>
                             </p>
-                            <button onClick={() => window.location.reload()} className="w-full bg-duo-green text-white font-extrabold uppercase py-4 rounded-2xl shadow-[0_4px_0_0_#58a700] active:shadow-none active:translate-y-[4px] transition-all tracking-wider">
-                                Refresh Page
-                            </button>
                         </div>
                     </div>
                 );
@@ -894,8 +783,8 @@
             }
 
 
-            // ================= LOGIN SCREEN =================
-            if (!currentUser && !isAdmin) {
+            // ================= LOGIN / COMPLETE PROFILE SCREEN =================
+            if (!currentUser) {
                 return (
                     <div className="min-h-screen bg-duo-grayLight flex items-center justify-center p-4">
                         <div className="w-full max-w-md">
@@ -903,69 +792,62 @@
                                 <div className="inline-block bg-white p-4 rounded-3xl border-2 border-duo-grayBorder shadow-[0_6px_0_0_#e5e5e5] mb-4">
                                     <i className="fa-solid fa-laptop-chromebook text-duo-green text-5xl"></i>
                                 </div>
-                                <h1 className="text-3xl font-extrabold text-duo-text tracking-tight">IBSH Chromebook Carts Reservation</h1>
-                                <p className="text-duo-text/60 font-bold mt-2">{authMode === 'login' ? 'Let\'s get booking!' : authMode === 'register' ? 'Create an account' : 'Admin Access'}</p>
+                                <h1 className="text-3xl font-extrabold text-duo-text tracking-tight">IBSH Cart Reservation</h1>
+                                <p className="text-duo-text/60 font-bold mt-2">
+                                    {authMode === 'auth' ? 'Please log in with your Google account.' : 'Almost there! Complete your profile.'}
+                                </p>
                             </div>
 
 
-                            <div className="bg-white rounded-[2rem] border-2 border-duo-grayBorder shadow-[0_8px_0_0_#e5e5e5] p-8">
-                                {authMode !== 'login' && (
-                                    <button onClick={() => setAuthMode('login')} className="text-duo-grayBorder hover:text-duo-text font-bold mb-6 flex items-center uppercase tracking-wider text-sm transition-colors">
-                                        <i className="fa-solid fa-chevron-left mr-2"></i> Back
+                            <div className="bg-white rounded-[2rem] border-2 border-duo-grayBorder shadow-[0_8px_0_0_#e5e5e5] p-8 text-center">
+                                {authMode === 'auth' && (
+                                    <button onClick={handleGoogleLogin} className="w-full bg-white text-duo-text font-extrabold py-4 rounded-2xl shadow-duo-gray border-2 border-duo-grayBorder hover:bg-gray-50 active:shadow-none active:translate-y-[4px] transition-all flex items-center justify-center gap-3 text-lg">
+                                        <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" className="w-6 h-6" />
+                                        Continue with Google
                                     </button>
                                 )}
 
 
-                                <form onSubmit={handleAuthSubmit} className="space-y-5">
-                                    {authMode === 'login' && (
-                                        <>
-                                            <div>
-                                                <label className="block text-xs font-extrabold text-duo-text/50 uppercase tracking-wider mb-2">Email Address</label>
-                                                <input required type="email" value={loginForm.email} onChange={e => setLoginForm({...loginForm, email: e.target.value})} className="w-full px-5 py-4 bg-duo-grayLight border-2 border-duo-grayBorder rounded-2xl focus:bg-white focus:border-duo-blue outline-none font-bold text-duo-text transition-all" placeholder="name@ibsh.tw" />
-                                            </div>
-                                            <div>
-                                                <label className="block text-xs font-extrabold text-duo-text/50 uppercase tracking-wider mb-2 flex justify-between">
-                                                    <span>Password</span>
-                                                </label>
-                                                <input required type="password" value={loginForm.password} onChange={e => setLoginForm({...loginForm, password: e.target.value})} className="w-full px-5 py-4 bg-duo-grayLight border-2 border-duo-grayBorder rounded-2xl focus:bg-white focus:border-duo-blue outline-none font-bold text-duo-text transition-all" placeholder="••••••••" />
-                                            </div>
-                                            <button type="submit" className="w-full mt-2 bg-duo-green text-white font-extrabold uppercase py-4 rounded-2xl shadow-[0_4px_0_0_#58a700] hover:bg-[#46a302] active:shadow-none active:translate-y-[4px] transition-all tracking-wider text-lg">
-                                                Log In
-                                            </button>
-                                            
-                                            <div className="pt-6 mt-6 border-t-2 border-duo-grayBorder flex flex-col gap-3">
-                                                <button type="button" onClick={() => setAuthMode('register')} className="w-full bg-white text-duo-blue font-extrabold uppercase py-3 rounded-2xl border-2 border-duo-grayBorder shadow-[0_4px_0_0_#e5e5e5] hover:bg-blue-50 active:shadow-none active:translate-y-[4px] transition-all tracking-wider">
-                                                    Create Account
-                                                </button>
-                                                <button type="button" onClick={() => setAuthMode('admin')} className="w-full text-duo-text/40 font-bold uppercase tracking-wider text-sm hover:text-duo-text mt-2 transition-colors">
-                                                    <i className="fa-solid fa-shield-halved mr-1"></i> Admin Portal
-                                                </button>
-                                            </div>
-                                        </>
-                                    )}
-                                    {authMode === 'register' && (
-                                        <>
-                                            <div><label className="block text-xs font-extrabold text-duo-text/50 uppercase tracking-wider mb-2">Full Name</label><input required type="text" value={regForm.name} onChange={e => setRegForm({...regForm, name: e.target.value})} className="w-full px-5 py-3 bg-duo-grayLight border-2 border-duo-grayBorder rounded-2xl focus:bg-white focus:border-duo-blue outline-none font-bold transition-all" /></div>
-                                            <div><label className="block text-xs font-extrabold text-duo-text/50 uppercase tracking-wider mb-2">Email (Login ID)</label><input required type="email" value={regForm.email} onChange={e => setRegForm({...regForm, email: e.target.value})} className="w-full px-5 py-3 bg-duo-grayLight border-2 border-duo-grayBorder rounded-2xl focus:bg-white focus:border-duo-blue outline-none font-bold transition-all" /></div>
-                                            <div><label className="block text-xs font-extrabold text-duo-text/50 uppercase tracking-wider mb-2">Set Password</label><input required type="password" minLength="6" value={regForm.password} onChange={e => setRegForm({...regForm, password: e.target.value})} placeholder="At least 6 chars" className="w-full px-5 py-3 bg-duo-grayLight border-2 border-duo-grayBorder rounded-2xl focus:bg-white focus:border-duo-blue outline-none font-bold transition-all" /></div>
-                                            <div><label className="block text-xs font-extrabold text-duo-text/50 uppercase tracking-wider mb-2">Default Class/Dept</label><select value={regForm.classType} onChange={e => setRegForm({...regForm, classType: e.target.value})} className="w-full px-5 py-3 bg-duo-grayLight border-2 border-duo-grayBorder rounded-2xl focus:bg-white focus:border-duo-blue outline-none font-bold transition-all appearance-none">{classOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}</select></div>
-                                            {regForm.classType === 'Other (Specify)' && <input required type="text" value={regForm.customClass} onChange={e => setRegForm({...regForm, customClass: e.target.value})} placeholder="Specify Department" className="w-full px-5 py-3 bg-duo-grayLight border-2 border-duo-grayBorder rounded-2xl focus:bg-white focus:border-duo-blue outline-none font-bold transition-all mt-2" />}
-                                            <button type="submit" className="w-full mt-4 bg-duo-blue text-white font-extrabold uppercase py-4 rounded-2xl shadow-[0_4px_0_0_#1899d6] hover:bg-[#1899d6] active:shadow-none active:translate-y-[4px] transition-all tracking-wider text-lg">
-                                                Register
-                                            </button>
-                                        </>
-                                    )}
-                                    {authMode === 'admin' && (
-                                        <>
-                                            <div><label className="block text-xs font-extrabold text-duo-text/50 uppercase tracking-wider mb-2 text-center">Admin Password</label><input required type="password" value={adminPwd} onChange={e => setAdminPwd(e.target.value)} className="w-full px-5 py-4 bg-duo-grayLight border-2 border-duo-grayBorder rounded-2xl focus:bg-white focus:border-duo-text outline-none font-bold text-duo-text transition-all text-center tracking-widest text-lg" autoFocus /></div>
-                                            <button type="submit" className="w-full mt-4 bg-duo-text text-white font-extrabold uppercase py-4 rounded-2xl shadow-[0_4px_0_0_#2b2b2b] hover:bg-black active:shadow-none active:translate-y-[4px] transition-all tracking-wider text-lg">
-                                                Enter Dashboard
-                                            </button>
-                                        </>
-                                    )}
-                                </form>
+                                {authMode === 'complete_profile' && (
+                                    <form onSubmit={handleCompleteProfile} className="space-y-5 text-left">
+                                        <div>
+                                            <label className="block text-xs font-extrabold text-duo-text/50 uppercase tracking-wider mb-2">Full Name</label>
+                                            <input required type="text" value={regForm.name} onChange={e => setRegForm({...regForm, name: e.target.value})} className="w-full px-5 py-3 bg-duo-grayLight border-2 border-duo-grayBorder rounded-2xl outline-none font-bold" readOnly title="由 Google 提供" />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-extrabold text-duo-text/50 uppercase tracking-wider mb-2">Email</label>
+                                            <input required type="email" value={regForm.email} className="w-full px-5 py-3 bg-duo-grayLight border-2 border-duo-grayBorder rounded-2xl outline-none font-bold text-gray-500" readOnly />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-extrabold text-duo-text/50 uppercase tracking-wider mb-2">Default Class/Dept</label>
+                                            <select value={regForm.classType} onChange={e => setRegForm({...regForm, classType: e.target.value})} className="w-full px-5 py-3 bg-white border-2 border-duo-grayBorder rounded-2xl focus:border-duo-blue outline-none font-bold transition-all appearance-none">
+                                                {classOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                                            </select>
+                                        </div>
+                                        {regForm.classType === 'Other (Specify)' && (
+                                            <input required type="text" value={regForm.customClass} onChange={e => setRegForm({...regForm, customClass: e.target.value})} placeholder="Specify Department" className="w-full px-5 py-3 bg-white border-2 border-duo-grayBorder rounded-2xl focus:border-duo-blue outline-none font-bold transition-all mt-2" />
+                                        )}
+                                        <button type="submit" className="w-full mt-4 bg-duo-blue text-white font-extrabold uppercase py-4 rounded-2xl shadow-[0_4px_0_0_#1899d6] hover:bg-[#1899d6] active:shadow-none active:translate-y-[4px] transition-all tracking-wider text-lg">
+                                            Let's Go!
+                                        </button>
+                                    </form>
+                                )}
                             </div>
                         </div>
+
+
+                        {/* Alert / Setup modal for login errors */}
+                        {alertModal.isOpen && (
+                            <div className="fixed inset-0 bg-slate-900/60 flex items-center justify-center p-4 z-[70] backdrop-blur-sm">
+                                <div className="bg-white rounded-[2rem] border-2 border-duo-grayBorder shadow-2xl max-w-xs w-full p-8 text-center animate-[bounceIn_0.3s_cubic-bezier(0.175,0.885,0.32,1.275)]">
+                                    <div className="w-20 h-20 bg-blue-50 text-duo-blue rounded-full flex items-center justify-center mx-auto mb-4 border-4 border-white shadow-sm">
+                                        <i className="fa-solid fa-bell text-4xl"></i>
+                                    </div>
+                                    <p className="text-duo-text font-bold mb-8 whitespace-pre-line text-lg leading-relaxed">{alertModal.message}</p>
+                                    <button onClick={() => setAlertModal({ isOpen: false, message: '' })} className="w-full bg-duo-blue text-white font-extrabold uppercase py-4 rounded-2xl shadow-duo-blue active:shadow-none active:translate-y-[4px] transition-all tracking-wider text-lg">Got it!</button>
+                                </div>
+                            </div>
+                        )}
                     </div>
                 );
             }
@@ -983,32 +865,29 @@
                             </div>
                             
                             <div className="flex items-center gap-3">
-                                <button onClick={() => changeView('print')} className="px-4 py-2.5 bg-white border-2 border-duo-grayBorder text-gray-400 font-extrabold uppercase tracking-wider rounded-2xl shadow-[0_4px_0_0_#e5e5e5] hover:bg-gray-50 active:shadow-none active:translate-y-[4px] transition-all text-xs sm:text-sm">
+                                <button onClick={() => changeView('print')} className="px-4 py-2.5 bg-white border-2 border-duo-grayBorder text-gray-400 font-extrabold uppercase tracking-wider rounded-2xl shadow-duo-gray hover:bg-gray-50 active:shadow-none active:translate-y-[4px] transition-all text-xs sm:text-sm">
                                     <i className="fa-solid fa-print sm:mr-1"></i> <span className="hidden sm:inline">Print</span>
                                 </button>
 
 
-                                <button onClick={() => changeView('my-bookings')} className={`px-4 py-2.5 font-extrabold uppercase tracking-wider rounded-2xl transition-all text-xs sm:text-sm ${currentView === 'my-bookings' ? 'bg-duo-blue text-white shadow-[0_4px_0_0_#1899d6] active:shadow-none active:translate-y-[4px]' : 'bg-white border-2 border-duo-grayBorder text-duo-blue shadow-[0_4px_0_0_#e5e5e5] hover:bg-blue-50 active:shadow-none active:translate-y-[4px]'}`}>
+                                <button onClick={() => changeView('my-bookings')} className={`px-4 py-2.5 font-extrabold uppercase tracking-wider rounded-2xl transition-all text-xs sm:text-sm ${currentView === 'my-bookings' ? 'bg-duo-blue text-white shadow-[0_4px_0_0_#1899d6] active:shadow-none active:translate-y-[4px]' : 'bg-white border-2 border-duo-grayBorder text-duo-blue shadow-duo-gray hover:bg-blue-50 active:shadow-none active:translate-y-[4px]'}`}>
                                     <i className="fa-solid fa-calendar-check sm:mr-1"></i> <span className="hidden sm:inline">My Bookings</span>
                                 </button>
 
 
                                 {isAdmin && (
-                                    <button onClick={() => { changeView('admin'); setAdminTab('carts'); }} className={`px-4 py-2.5 font-extrabold uppercase tracking-wider rounded-2xl transition-all text-xs sm:text-sm ${currentView === 'admin' ? 'bg-duo-text text-white shadow-[0_4px_0_0_#2b2b2b] active:shadow-none active:translate-y-[4px]' : 'bg-white border-2 border-duo-grayBorder text-duo-text shadow-[0_4px_0_0_#e5e5e5] hover:bg-gray-50 active:shadow-none active:translate-y-[4px]'}`}>
+                                    <button onClick={() => { changeView('admin'); setAdminTab('carts'); }} className={`px-4 py-2.5 font-extrabold uppercase tracking-wider rounded-2xl transition-all text-xs sm:text-sm ${currentView === 'admin' ? 'bg-duo-text text-white shadow-[0_4px_0_0_#2b2b2b] active:shadow-none active:translate-y-[4px]' : 'bg-white border-2 border-duo-grayBorder text-duo-text shadow-duo-gray hover:bg-gray-50 active:shadow-none active:translate-y-[4px]'}`}>
                                         <i className="fa-solid fa-gear sm:mr-1"></i> <span className="hidden sm:inline">Admin</span>
                                     </button>
                                 )}
                                 
                                 {/* User Profile Pill */}
                                 <div className="flex items-center ml-2 border-2 border-duo-grayBorder rounded-2xl h-[44px] overflow-hidden bg-duo-grayLight">
-                                    <div className="px-4 font-extrabold text-duo-blue text-sm flex items-center h-full max-w-[120px] truncate">
+                                    <div className="px-4 font-extrabold text-duo-blue text-sm flex items-center h-full max-w-[120px] truncate" title={currentUser.email}>
                                         <i className={`fa-solid ${isAdmin ? 'fa-shield-halved text-duo-yellow' : 'fa-user'} mr-2`}></i>
                                         {currentUser.name}
                                     </div>
-                                    <button onClick={() => setUserPwdModal({ isOpen: true, current: '', new: '', confirm: '' })} className="px-3 h-full border-l-2 border-duo-grayBorder text-gray-400 hover:text-duo-yellow hover:bg-yellow-50 transition-colors" title="Change Password">
-                                        <i className="fa-solid fa-key"></i>
-                                    </button>
-                                    <button onClick={() => { setCurrentUser(null); setIsAdmin(false); setAuthMode('login'); }} className="px-3 h-full border-l-2 border-duo-grayBorder text-gray-400 hover:text-duo-red hover:bg-red-50 transition-colors" title="Log Out">
+                                    <button onClick={handleLogout} className="px-4 h-full border-l-2 border-duo-grayBorder text-gray-400 hover:text-duo-red hover:bg-red-50 transition-colors" title="Log Out">
                                         <i className="fa-solid fa-right-from-bracket"></i>
                                     </button>
                                 </div>
@@ -1156,7 +1035,6 @@
                                                                     if (period.id === 'lunch') return <td key={dayIdx} className="p-2 align-middle"><div className="bg-gray-50 rounded-2xl h-[72px]"></div></td>;
                                                                     
                                                                     const slotId = `w${selectedWeek}_d${dayIdx}_p${period.id}`;
-                                                                    // 尋找這個時段我有借了哪些車 (可能同時借兩台給不同班級)
                                                                     const myCartsThisSlot = Object.entries(cartData).filter(([cName, cData]) => cData.schedule && cData.schedule[slotId]?.ownerEmail === currentUser.email);
                                                                     
                                                                     return (
@@ -1198,7 +1076,6 @@
                                     </div>
                                     <div className="flex flex-wrap items-center gap-3">
                                         
-                                        {/* 新增：搜尋框 */}
                                         <div className="relative">
                                             <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none">
                                                 <i className="fa-solid fa-search text-gray-400"></i>
@@ -1262,7 +1139,6 @@
                                         <i className="fa-solid fa-arrow-left mr-2"></i> Back
                                     </button>
                                     
-                                    {/* 批次預約開關 */}
                                     <div className="flex items-center space-x-3 bg-white px-4 py-2 rounded-xl border-2 border-duo-grayBorder">
                                         <span className="text-sm font-extrabold text-duo-text uppercase tracking-wider">Batch Mode</span>
                                         <div className="relative cursor-pointer" onClick={() => { setIsBatchMode(!isBatchMode); setBatchSelection([]); }}>
@@ -1287,7 +1163,6 @@
                                         <table className="w-full min-w-[700px] border-separate border-spacing-2">
                                             <thead>
                                                 <tr>
-                                                    {/* 手機版固定第一欄 */}
                                                     <th className="p-2 w-32 sm:w-40 text-center font-extrabold text-gray-400 uppercase tracking-wider text-sm border-b-2 border-duo-grayBorder pb-4 align-bottom sticky left-0 bg-white z-20 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
                                                         <div className="flex items-center justify-center h-full pb-1">Period</div>
                                                     </th>
@@ -1304,7 +1179,6 @@
                                             <tbody>
                                                 {periods.map((period, pIdx) => (
                                                     <tr key={period.id}>
-                                                        {/* 手機版固定第一欄 */}
                                                         <td className="p-2 align-middle sticky left-0 bg-white z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
                                                             <div className="flex flex-col items-center justify-center bg-duo-grayLight rounded-2xl h-[72px] border-2 border-duo-grayBorder">
                                                                 <span className="font-extrabold text-duo-text text-sm">{period.name}</span>
@@ -1413,7 +1287,6 @@
                                                     {sortedAllCarts.map(([name, data], index) => (
                                                         <div key={name} className="border-2 border-duo-grayBorder rounded-2xl p-3 sm:p-4 flex items-center justify-between bg-white hover:border-duo-blue transition-colors">
                                                             <div className="flex items-center gap-3 sm:gap-4">
-                                                                {/* 手動排序箭頭區塊 */}
                                                                 <div className="flex flex-col gap-1 pr-3 border-r-2 border-duo-grayBorder shrink-0">
                                                                     <button onClick={() => moveCart(name, 'up')} disabled={index === 0} className="text-gray-300 hover:text-duo-blue disabled:opacity-20 disabled:hover:text-gray-300 transition-colors cursor-pointer"><i className="fa-solid fa-caret-up text-2xl leading-none"></i></button>
                                                                     <button onClick={() => moveCart(name, 'down')} disabled={index === sortedAllCarts.length - 1} className="text-gray-300 hover:text-duo-blue disabled:opacity-20 disabled:hover:text-gray-300 transition-colors cursor-pointer"><i className="fa-solid fa-caret-down text-2xl leading-none"></i></button>
@@ -1437,21 +1310,41 @@
 
                                         {adminTab === 'users' && (
                                             <div>
-                                                <h3 className="text-2xl font-extrabold text-duo-text mb-6 border-b-2 border-duo-grayBorder pb-4">Registered Teachers</h3>
+                                                <h3 className="text-2xl font-extrabold text-duo-text mb-6 border-b-2 border-duo-grayBorder pb-4">Registered Users</h3>
                                                 <div className="overflow-x-auto border-2 border-duo-grayBorder rounded-2xl">
-                                                    <table className="w-full text-left">
+                                                    <table className="w-full text-left min-w-[600px]">
                                                         <thead className="bg-duo-grayLight border-b-2 border-duo-grayBorder">
-                                                            <tr><th className="p-4 text-xs font-extrabold text-gray-400 uppercase tracking-wider">Name</th><th className="p-4 text-xs font-extrabold text-gray-400 uppercase tracking-wider">Email</th><th className="p-4 text-xs font-extrabold text-gray-400 uppercase tracking-wider">Class</th><th className="p-4 text-right text-xs font-extrabold text-gray-400 uppercase tracking-wider">Actions</th></tr>
+                                                            <tr>
+                                                                <th className="p-4 text-xs font-extrabold text-gray-400 uppercase tracking-wider">User Info</th>
+                                                                <th className="p-4 text-xs font-extrabold text-gray-400 uppercase tracking-wider">Role</th>
+                                                                <th className="p-4 text-right text-xs font-extrabold text-gray-400 uppercase tracking-wider">Actions</th>
+                                                            </tr>
                                                         </thead>
                                                         <tbody className="divide-y-2 divide-duo-grayBorder">
                                                             {Object.values(usersDB).map((user) => (
                                                                 <tr key={user.email} className="hover:bg-gray-50 transition-colors">
-                                                                    <td className="p-4 font-extrabold text-duo-text">{user.name}</td>
-                                                                    <td className="p-4 font-bold text-gray-500">{user.email}</td>
-                                                                    <td className="p-4 font-bold text-gray-500">{user.defaultClass === 'Other (Specify)' ? user.customClass : user.defaultClass}</td>
-                                                                    <td className="p-4 flex justify-end gap-2">
-                                                                        <button onClick={() => resetUserPassword(user.email)} className="px-3 py-2 bg-white border-2 border-duo-grayBorder text-duo-yellowDark rounded-xl shadow-duo-gray active:shadow-none active:translate-y-[4px] text-xs font-extrabold uppercase transition-all"><i className="fa-solid fa-key mr-1"></i> Pwd</button>
-                                                                        <button onClick={() => deleteUser(user.email)} className="px-3 py-2 bg-white border-2 border-duo-grayBorder text-duo-red rounded-xl shadow-duo-gray active:shadow-none active:translate-y-[4px] text-xs font-extrabold uppercase transition-all"><i className="fa-solid fa-trash mr-1"></i> Del</button>
+                                                                    <td className="p-4">
+                                                                        <div className="font-extrabold text-duo-text">{user.name}</div>
+                                                                        <div className="font-bold text-gray-500 text-sm mt-1">{user.email}</div>
+                                                                        <div className="text-xs bg-gray-200 text-gray-600 px-2 py-0.5 rounded inline-block mt-2">{user.defaultClass === 'Other (Specify)' ? user.customClass : user.defaultClass}</div>
+                                                                    </td>
+                                                                    <td className="p-4 align-top pt-5">
+                                                                        {user.isAdmin ? (
+                                                                            <span className="bg-yellow-50 text-duo-yellowDark border-2 border-yellow-200 px-2 py-1 rounded-lg text-xs font-extrabold uppercase tracking-wider"><i className="fa-solid fa-shield-halved mr-1"></i> Admin</span>
+                                                                        ) : (
+                                                                            <span className="bg-gray-100 text-gray-500 px-2 py-1 rounded-lg text-xs font-extrabold uppercase tracking-wider"><i className="fa-solid fa-user mr-1"></i> User</span>
+                                                                        )}
+                                                                    </td>
+                                                                    <td className="p-4 align-top pt-5">
+                                                                        <div className="flex justify-end gap-2">
+                                                                            {/* 更改權限：不能把自己拔除 */}
+                                                                            <button onClick={() => toggleUserAdmin(user.email, !!user.isAdmin)} disabled={user.email === currentUser.email} className="px-3 py-2 bg-white border-2 border-duo-grayBorder text-duo-blue rounded-xl shadow-duo-gray active:shadow-none active:translate-y-[4px] text-xs font-extrabold uppercase transition-all disabled:opacity-30 disabled:cursor-not-allowed">
+                                                                                <i className="fa-solid fa-rotate mr-1"></i> Role
+                                                                            </button>
+                                                                            <button onClick={() => deleteUser(user.email)} disabled={user.email === currentUser.email} className="px-3 py-2 bg-white border-2 border-duo-grayBorder text-duo-red rounded-xl shadow-duo-gray active:shadow-none active:translate-y-[4px] text-xs font-extrabold uppercase transition-all disabled:opacity-30 disabled:cursor-not-allowed">
+                                                                                <i className="fa-solid fa-trash mr-1"></i> Del
+                                                                            </button>
+                                                                        </div>
                                                                     </td>
                                                                 </tr>
                                                             ))}
@@ -1476,7 +1369,7 @@
                                                                     <td className="p-4 font-bold text-gray-400 text-sm whitespace-nowrap">{log.time}</td>
                                                                     <td className="p-4 font-extrabold text-duo-text">{log.operator}</td>
                                                                     <td className="p-4">
-                                                                        <span className={`px-3 py-1 rounded-xl text-xs font-extrabold uppercase tracking-wider border-2 ${log.action.includes('Cancel') || log.action.includes('Delete') || log.action.includes('Clear') ? 'bg-red-50 text-duo-red border-red-200' : log.action.includes('Registration') ? 'bg-blue-50 text-duo-blue border-blue-200' : 'bg-green-50 text-duo-green border-green-200'}`}>
+                                                                        <span className={`px-3 py-1 rounded-xl text-xs font-extrabold uppercase tracking-wider border-2 ${log.action.includes('Cancel') || log.action.includes('Delete') || log.action.includes('Clear') ? 'bg-red-50 text-duo-red border-red-200' : log.action.includes('Registration') || log.action.includes('Role') ? 'bg-blue-50 text-duo-blue border-blue-200' : 'bg-green-50 text-duo-green border-green-200'}`}>
                                                                             {log.action}
                                                                         </span>
                                                                     </td>
@@ -1512,20 +1405,6 @@
                                                         <button onClick={handleClearSemesterData} className="w-full bg-duo-red text-white font-extrabold uppercase py-3 rounded-2xl shadow-duo-red active:shadow-none active:translate-y-[4px] transition-all tracking-wider">
                                                             <i className="fa-solid fa-bomb mr-2"></i> Clear Bookings
                                                         </button>
-                                                    </div>
-                                                </div>
-
-
-                                                <div className="flex-1">
-                                                    <h3 className="text-2xl font-extrabold text-duo-text mb-6 border-b-2 border-duo-grayBorder pb-4">Security</h3>
-                                                    <div className="bg-duo-grayLight border-2 border-duo-grayBorder rounded-[2rem] p-6">
-                                                        <h4 className="font-extrabold text-duo-text mb-4 text-lg">Admin Password</h4>
-                                                        <form onSubmit={handleAdminPwdChange} className="space-y-4">
-                                                            <div><label className="block text-xs font-extrabold text-gray-500 uppercase tracking-wider mb-2">Current</label><input required type="password" value={adminPwdForm.current} onChange={e => setAdminPwdForm({...adminPwdForm, current: e.target.value})} className="w-full px-4 py-3 bg-white border-2 border-duo-grayBorder rounded-xl focus:border-duo-blue outline-none font-bold text-duo-text" /></div>
-                                                            <div><label className="block text-xs font-extrabold text-gray-500 uppercase tracking-wider mb-2">New</label><input required type="password" value={adminPwdForm.new} onChange={e => setAdminPwdForm({...adminPwdForm, new: e.target.value})} className="w-full px-4 py-3 bg-white border-2 border-duo-grayBorder rounded-xl focus:border-duo-blue outline-none font-bold text-duo-text" /></div>
-                                                            <div><label className="block text-xs font-extrabold text-gray-500 uppercase tracking-wider mb-2">Confirm</label><input required type="password" value={adminPwdForm.confirm} onChange={e => setAdminPwdForm({...adminPwdForm, confirm: e.target.value})} className="w-full px-4 py-3 bg-white border-2 border-duo-grayBorder rounded-xl focus:border-duo-blue outline-none font-bold text-duo-text" /></div>
-                                                            <button type="submit" className="w-full mt-2 bg-duo-text text-white font-extrabold uppercase py-3 rounded-2xl shadow-[0_4px_0_0_#2b2b2b] hover:bg-black active:shadow-none active:translate-y-[4px] transition-all tracking-wider">Update</button>
-                                                        </form>
                                                     </div>
                                                 </div>
                                             </div>
@@ -1570,100 +1449,87 @@
                     </main>
 
 
-                  {/* ================= Print Only Section ================= */}
-<div className="hidden print-only w-full">
-    {printSelection.map((cartName) => (
-        <div key={cartName} className="page-break w-full">
-            <div className="text-center mb-2">
-                <h2 className="text-2xl font-bold">{cartName} Reservation List</h2>
-                <p className="text-sm mt-1">Week {selectedWeek} ( {getWeekDateRange(selectedWeek, allowSaturday)} )</p>
-            </div>
-            
-            <table className="w-full text-xs">
-                <thead>
-                    <tr>
-                        <th className="col-period" rowSpan="2">Period</th>
-                        {currentDays.map((d, dayIdx) => (
-                            <th key={d} colSpan="3" className="py-1">
-                                <span className="text-[14px]">{d}</span> <span style={{fontSize:'11px', fontWeight:'normal', color:'#666'}}>{getDateForDayIdx(selectedWeek, dayIdx)}</span>
-                            </th>
+                    {/* ================= Print Only Section ================= */}
+                    <div className="hidden print-only w-full">
+                        {printSelection.map((cartName) => (
+                            <div key={cartName} className="page-break w-full">
+                                <div className="text-center mb-2">
+                                    <h2 className="text-2xl font-bold">{cartName} Reservation List</h2>
+                                    <p className="text-sm mt-1">Week {selectedWeek} ( {getWeekDateRange(selectedWeek, allowSaturday)} )</p>
+                                </div>
+                                <table className="w-full text-xs">
+                                    <thead>
+                                        <tr>
+                                            <th className="col-period" rowSpan="2">Period</th>
+                                            {currentDays.map((d, dayIdx) => (
+                                                <th key={d} colSpan="3" className="py-1">
+                                                    <span className="text-[14px]">{d}</span> <span style={{fontSize:'11px', fontWeight:'normal', color:'#666'}}>{getDateForDayIdx(selectedWeek, dayIdx)}</span>
+                                                </th>
+                                            ))}
+                                        </tr>
+                                        <tr>
+                                            {currentDays.map(d => (
+                                                <React.Fragment key={d + "-sub"}>
+                                                    <th className="text-[11px] py-1 bg-[#fafafa]">Teacher</th>
+                                                    <th className="text-[11px] py-1 bg-[#fafafa]" style={{ width: '40px' }}>Check-out</th>
+                                                    <th className="text-[11px] py-1 bg-[#fafafa]" style={{ width: '40px' }}>Return</th>
+                                                </React.Fragment>
+                                            ))}
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {periods.map(period => (
+                                            <React.Fragment key={period.id}>
+                                                <tr>
+                                                    <td>
+                                                        <strong className="text-[13px]">{period.name}</strong><br/>
+                                                        <span className="text-[10px] text-gray-600">{period.time}</span>
+                                                    </td>
+                                                    {currentDays.map((day, dayIdx) => {
+                                                        if (period.id === 'lunch') {
+                                                            return <td key={dayIdx} colSpan="3" className="print-lunch font-bold text-center">Not Avaliable for Lunch</td>;
+                                                        }
+                                                        
+                                                        const booking = cartData[cartName].schedule[`w${selectedWeek}_d${dayIdx}_p${period.id}`];
+                                                        
+                                                        return (
+                                                            <React.Fragment key={dayIdx}>
+                                                                <td className="text-left align-top p-1.5 leading-tight">
+                                                                    {booking ? (
+                                                                        <div>
+                                                                            <span className="text-[10px] text-gray-600">{booking.className}</span><br/>
+                                                                            <strong className="text-[12px]">{booking.name}</strong>
+                                                                        </div>
+                                                                    ) : ""}
+                                                                </td>
+                                                                <td></td>
+                                                                <td></td>
+                                                            </React.Fragment>
+                                                        );
+                                                    })}
+                                                </tr>
+                                                {period.id === 'lunch' && (
+                                                    <tr>
+                                                        <th className="text-[11px] py-1 bg-[#fafafa]">Period</th>
+                                                        {currentDays.map(d => (
+                                                            <React.Fragment key={d + "-sub-afternoon"}>
+                                                                <th className="text-[11px] py-1 bg-[#fafafa]">Teacher</th>
+                                                                <th className="text-[11px] py-1 bg-[#fafafa]" style={{ width: '40px' }}>Check-out</th>
+                                                                <th className="text-[11px] py-1 bg-[#fafafa]" style={{ width: '40px' }}>Return</th>
+                                                            </React.Fragment>
+                                                        ))}
+                                                    </tr>
+                                                )}
+                                            </React.Fragment>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
                         ))}
-                    </tr>
-                    <tr>
-                        {currentDays.map(d => (
-                            <React.Fragment key={d + "-sub"}>
-                                <th className="text-[11px] py-1 bg-[#fafafa]">Teacher</th>
-                                <th className="text-[11px] py-1 bg-[#fafafa]" style={{ width: '40px' }}>Check-out</th>
-                                <th className="text-[11px] py-1 bg-[#fafafa]" style={{ width: '40px' }}>Return</th>
-                            </React.Fragment>
-                        ))}
-                    </tr>
-                </thead>
-                <tbody>
-    {periods.map(period => (
-        <React.Fragment key={period.id}>
-            {/* 1. 渲染原本的課程列與午餐列 */}
-            <tr>
-                <td>
-                    <strong className="text-[13px]">{period.name}</strong><br/>
-                    <span className="text-[10px] text-gray-600">{period.time}</span>
-                </td>
-                {currentDays.map((day, dayIdx) => {
-                    // 如果是午餐，維持原本的跨三欄顯示
-                    if (period.id === 'lunch') {
-                        return <td key={dayIdx} colSpan="3" className="print-lunch font-bold text-center">Not Avaliable for Lunch</td>;
-                    }
-                    
-                    const booking = cartData[cartName].schedule[`w${selectedWeek}_d${dayIdx}_p${period.id}`];
-                    
-                    return (
-                        <React.Fragment key={dayIdx}>
-                            <td className="text-left align-top p-1.5 leading-tight">
-                                {booking ? (
-                                    <div>
-                                        <span className="text-[10px] text-gray-600">{booking.className}</span><br/>
-                                        <strong className="text-[12px]">{booking.name}</strong>
-                                    </div>
-                                ) : ""}
-                            </td>
-                            <td></td>
-                            <td></td>
-                        </React.Fragment>
-                    );
-                })}
-            </tr>
+                    </div>
 
 
-            {/* 2. 當遇到午餐時，在下方額外插入一列標題列 */}
-            {period.id === 'lunch' && (
-                <tr>
-                    {/* 左側加入 Period 標題 */}
-                    <th className="text-[11px] py-1 bg-[#fafafa]">Period</th>
-                    
-                    {/* 依照天數重新渲染一次 Teacher、Check-out、Return (首字母已大寫) */}
-                    {currentDays.map(d => (
-                        <React.Fragment key={d + "-sub-afternoon"}>
-                            <th className="text-[11px] py-1 bg-[#fafafa]">Teacher</th>
-                            <th className="text-[11px] py-1 bg-[#fafafa]" style={{ width: '40px' }}>Check-out</th>
-                            <th className="text-[11px] py-1 bg-[#fafafa]" style={{ width: '40px' }}>Return</th>
-                        </React.Fragment>
-                    ))}
-                </tr>
-            )}
-        </React.Fragment>
-    ))}
-</tbody>
-
-
-            </table>
-            
-            <div className="mt-auto pt-3 pb-2 flex justify-between px-8 text-sm font-bold">
-            </div>
-        </div>
-    ))}
-</div>
                     {/* ================= Modals ================= */}
-                    {/* Booking Modal */}
                     {bookingModal.isOpen && (
                         <div className="fixed inset-0 bg-slate-900/60 flex items-center justify-center p-4 z-50 backdrop-blur-sm no-print">
                             <div className="bg-white rounded-[2rem] border-2 border-duo-grayBorder shadow-2xl w-full max-w-sm overflow-hidden animate-[fadeIn_0.15s_ease-out]">
@@ -1735,7 +1601,6 @@
                     )}
 
 
-                    {/* Edit Cart Modal */}
                     {editCartModal.isOpen && (
                         <div className="fixed inset-0 bg-slate-900/60 flex items-center justify-center p-4 z-50 overflow-y-auto no-print backdrop-blur-sm">
                             <div className="bg-white rounded-[2rem] border-2 border-duo-grayBorder shadow-2xl w-full max-w-lg my-8 animate-[fadeIn_0.15s_ease-out] overflow-hidden">
@@ -1761,21 +1626,6 @@
                     )}
 
 
-                    {/* Alert Modal */}
-                    {alertModal.isOpen && (
-                        <div className="fixed inset-0 bg-slate-900/60 flex items-center justify-center p-4 z-[70] backdrop-blur-sm">
-                            <div className="bg-white rounded-[2rem] border-2 border-duo-grayBorder shadow-2xl max-w-xs w-full p-8 text-center animate-[bounceIn_0.3s_cubic-bezier(0.175,0.885,0.32,1.275)]">
-                                <div className="w-20 h-20 bg-blue-50 text-duo-blue rounded-full flex items-center justify-center mx-auto mb-4 border-4 border-white shadow-sm">
-                                    <i className="fa-solid fa-bell text-4xl"></i>
-                                </div>
-                                <p className="text-duo-text font-bold mb-8 whitespace-pre-line text-lg leading-relaxed">{alertModal.message}</p>
-                                <button onClick={() => setAlertModal({ isOpen: false, message: '' })} className="w-full bg-duo-blue text-white font-extrabold uppercase py-4 rounded-2xl shadow-duo-blue active:shadow-none active:translate-y-[4px] transition-all tracking-wider text-lg">Got it!</button>
-                            </div>
-                        </div>
-                    )}
-
-
-                    {/* Confirm Modal */}
                     {confirmModal.isOpen && (
                         <div className="fixed inset-0 bg-slate-900/60 flex items-center justify-center p-4 z-[70] backdrop-blur-sm">
                             <div className="bg-white rounded-[2rem] border-2 border-duo-grayBorder shadow-2xl max-w-sm w-full p-8 text-center animate-[bounceIn_0.3s_cubic-bezier(0.175,0.885,0.32,1.275)]">
@@ -1787,39 +1637,6 @@
                                     <button onClick={() => setConfirmModal({ isOpen: false, message: '', onConfirm: null })} className="flex-1 bg-white border-2 border-duo-grayBorder text-gray-400 font-extrabold uppercase py-4 rounded-2xl shadow-duo-gray active:shadow-none active:translate-y-[4px] transition-all tracking-wider text-sm">Cancel</button>
                                     <button onClick={() => { confirmModal.onConfirm(); setConfirmModal({ isOpen: false, message: '', onConfirm: null }); }} className="flex-1 bg-duo-red text-white font-extrabold uppercase py-4 rounded-2xl shadow-duo-red active:shadow-none active:translate-y-[4px] transition-all tracking-wider text-sm">Confirm</button>
                                 </div>
-                            </div>
-                        </div>
-                    )}
-
-
-                    {/* User Change Password Modal */}
-                    {userPwdModal.isOpen && (
-                        <div className="fixed inset-0 bg-slate-900/60 flex items-center justify-center p-4 z-[70] backdrop-blur-sm no-print">
-                            <div className="bg-white rounded-[2rem] border-2 border-duo-grayBorder shadow-2xl w-full max-w-sm overflow-hidden animate-[fadeIn_0.15s_ease-out]">
-                                <div className="p-6 border-b-2 border-duo-grayBorder flex justify-between items-center bg-duo-grayLight">
-                                    <h3 className="font-extrabold text-xl text-duo-text"><i className="fa-solid fa-key text-duo-yellow mr-2"></i>Change Password</h3>
-                                    <button onClick={() => setUserPwdModal({ isOpen: false, current: '', new: '', confirm: '' })} className="w-8 h-8 flex items-center justify-center bg-white border-2 border-duo-grayBorder rounded-full text-gray-400 hover:text-duo-text transition-colors">
-                                        <i className="fa-solid fa-times"></i>
-                                    </button>
-                                </div>
-                                <form onSubmit={handleUserPwdChange} className="p-6 space-y-4">
-                                    <div>
-                                        <label className="block text-xs font-extrabold text-gray-400 uppercase tracking-wider mb-1">Current Password</label>
-                                        <input required type="password" value={userPwdModal.current} onChange={e => setUserPwdModal({...userPwdModal, current: e.target.value})} className="w-full px-4 py-3 bg-white border-2 border-duo-grayBorder rounded-xl focus:border-duo-blue outline-none font-bold" />
-                                    </div>
-                                    <div>
-                                        <label className="block text-xs font-extrabold text-gray-400 uppercase tracking-wider mb-1">New Password</label>
-                                        <input required type="password" minLength="6" value={userPwdModal.new} onChange={e => setUserPwdModal({...userPwdModal, new: e.target.value})} placeholder="Min 6 chars" className="w-full px-4 py-3 bg-white border-2 border-duo-grayBorder rounded-xl focus:border-duo-blue outline-none font-bold" />
-                                    </div>
-                                    <div>
-                                        <label className="block text-xs font-extrabold text-gray-400 uppercase tracking-wider mb-1">Confirm Password</label>
-                                        <input required type="password" minLength="6" value={userPwdModal.confirm} onChange={e => setUserPwdModal({...userPwdModal, confirm: e.target.value})} className="w-full px-4 py-3 bg-white border-2 border-duo-grayBorder rounded-xl focus:border-duo-blue outline-none font-bold" />
-                                    </div>
-                                    <div className="flex gap-3 pt-4 border-t-2 border-duo-grayBorder mt-4">
-                                        <button type="button" onClick={() => setUserPwdModal({ isOpen: false, current: '', new: '', confirm: '' })} className="flex-1 bg-white border-2 border-duo-grayBorder text-gray-400 font-extrabold uppercase py-3 rounded-2xl shadow-duo-gray active:shadow-none active:translate-y-[4px] transition-all">Cancel</button>
-                                        <button type="submit" className="flex-[2] bg-duo-yellow text-white font-extrabold uppercase py-3 rounded-2xl shadow-[0_4px_0_0_#e5b400] hover:bg-[#e5b400] active:shadow-none active:translate-y-[4px] transition-all">Save</button>
-                                    </div>
-                                </form>
                             </div>
                         </div>
                     )}
