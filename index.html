@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>IBSH Chromebook Carts Reservation</title>
     
-    <!-- 引入 Google Fonts: Nunito 圓體字型，完美契合 Duolingo 風格 -->
+    <!-- 引入 Google Fonts: Nunito -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
@@ -18,27 +18,17 @@
                 extend: {
                     colors: {
                         duo: {
-                            green: '#58cc02',
-                            greenDark: '#58a700',
-                            blue: '#1cb0f6',
-                            blueDark: '#1899d6',
-                            red: '#ff4b4b',
-                            redDark: '#ea2b2b',
-                            yellow: '#ffc800',
-                            yellowDark: '#e5b400',
-                            text: '#4b4b4b',
-                            grayLight: '#f7f7f7',
-                            grayBorder: '#e5e5e5'
+                            green: '#58cc02', greenDark: '#58a700',
+                            blue: '#1cb0f6', blueDark: '#1899d6',
+                            red: '#ff4b4b', redDark: '#ea2b2b',
+                            yellow: '#ffc800', yellowDark: '#e5b400',
+                            text: '#4b4b4b', grayLight: '#f7f7f7', grayBorder: '#e5e5e5'
                         }
                     },
-                    fontFamily: {
-                        sans: ['Nunito', 'sans-serif'],
-                    },
+                    fontFamily: { sans: ['Nunito', 'sans-serif'] },
                     boxShadow: {
-                        'duo-green': '0 4px 0 0 #58a700',
-                        'duo-blue': '0 4px 0 0 #1899d6',
-                        'duo-red': '0 4px 0 0 #ea2b2b',
-                        'duo-gray': '0 4px 0 0 #e5e5e5',
+                        'duo-green': '0 4px 0 0 #58a700', 'duo-blue': '0 4px 0 0 #1899d6',
+                        'duo-red': '0 4px 0 0 #ea2b2b', 'duo-gray': '0 4px 0 0 #e5e5e5',
                         'duo-card': '0 6px 0 0 #e5e5e5',
                     }
                 }
@@ -46,14 +36,12 @@
         }
     </script>
     
-    <!-- 引入 FontAwesome 用於圖示 -->
+    <!-- 引入 FontAwesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     
     <!-- 引入 React 與 ReactDOM -->
     <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
-    
-    <!-- 引入 Babel 以在瀏覽器中編譯 JSX -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
 
@@ -62,69 +50,43 @@
             @page { size: A4 landscape; margin: 10mm; }
             body { background: white; margin: 0; padding: 0; }
             .no-print { display: none !important; }
-            
             .print-only { display: block !important; width: 100%; }
-            .page-break { 
-                page-break-after: always; 
-                height: 96vh; 
-                display: flex; 
-                flex-direction: column; 
-            }
-            
-            table { 
-                width: 100%; 
-                flex-grow: 1; 
-                border-collapse: collapse; 
-                table-layout: fixed; 
-            }
-            
-            th, td { 
-                border: 1px solid #000; 
-                text-align: center; 
-                vertical-align: middle; 
-                font-family: sans-serif; 
-                word-wrap: break-word; 
-                overflow: hidden;
-            }
-            
+            .page-break { page-break-after: always; height: 96vh; display: flex; flex-direction: column; }
+            table { width: 100%; flex-grow: 1; border-collapse: collapse; table-layout: fixed; }
+            th, td { border: 1px solid #000; text-align: center; vertical-align: middle; font-family: sans-serif; word-wrap: break-word; overflow: hidden; }
             th { background-color: #f3f4f6 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; font-weight: bold; }
             .col-period { width: 65px; } 
             .print-lunch { background-color: #e5e7eb !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; letter-spacing: 2px; font-size: 14px; }
         }
-        
         .hide-scrollbar::-webkit-scrollbar { display: none; }
         .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
     </style>      
-   </head>
+</head>
 <body class="bg-white font-sans text-duo-text selection:bg-duo-green selection:text-white">
     
-    <!-- 應用程式根節點 -->
     <div id="root"></div>
 
 
-    <!-- Firebase 模組載入 -->
+    <!-- Firebase 模組載入 (新增 GoogleAuthProvider 相關套件) -->
     <script type="module">
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js';
-        import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js';
-        import { getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot, runTransaction } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
+        import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken, GoogleAuthProvider, signInWithPopup, signOut } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js';
+        import { getFirestore, collection, doc, getDoc, setDoc, deleteDoc, onSnapshot, runTransaction } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
 
 
         window.fbModules = {
-            initializeApp, getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken,
-            getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot, runTransaction
+            initializeApp, getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken, GoogleAuthProvider, signInWithPopup, signOut,
+            getFirestore, collection, doc, getDoc, setDoc, deleteDoc, onSnapshot, runTransaction
         };
         window.dispatchEvent(new Event('firebaseLoaded'));
     </script>
 
 
-
-
-    <!-- React 應用程式邏輯 -->
     <script type="text/babel">
         const { useState, useEffect } = React;
 
 
-        // 密碼雜湊加密函數 (SHA-256)
+        // Admin 密碼加密用 (SHA-256)
         const sha256 = async (message) => {
             const msgBuffer = new TextEncoder().encode(message);
             const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
@@ -133,9 +95,7 @@
         };
 
 
-        // Firebase 環境偵測與設定
         const isCanvasEnv = typeof __firebase_config !== 'undefined';
-        
         const defaultFirebaseConfig = {
             apiKey: "AIzaSyC13KFTs6QifMQc0HVsUstfjAmLbpoF0t4",
             authDomain: "cartreserver.firebaseapp.com",
@@ -158,23 +118,19 @@
         };
 
 
-        // 注意：為了向下相容，密碼維持原設定，新註冊的才會被加密
+        // 移除密碼欄位，只留下身分與班級資料
         const initialUsers = {
-            "bianca@school.edu": { name: "Bianca", email: "bianca@school.edu", password: "password123", defaultClass: "11A", customClass: "" },
-            "yvonne@school.edu": { name: "Yvonne", email: "yvonne@school.edu", password: "password123", defaultClass: "11B", customClass: "" }
+            "bianca@school.edu": { name: "Bianca", email: "bianca@school.edu", defaultClass: "11A", customClass: "" },
+            "yvonne@school.edu": { name: "Yvonne", email: "yvonne@school.edu", defaultClass: "11B", customClass: "" }
         };
 
 
         const periods = [
-            { id: 1, time: "8:10-9:00", name: "Period 1" },
-            { id: 2, time: "9:10-10:00", name: "Period 2" },
-            { id: 3, time: "10:10-11:00", name: "Period 3" },
-            { id: 4, time: "11:10-12:00", name: "Period 4" },
+            { id: 1, time: "8:10-9:00", name: "Period 1" }, { id: 2, time: "9:10-10:00", name: "Period 2" },
+            { id: 3, time: "10:10-11:00", name: "Period 3" }, { id: 4, time: "11:10-12:00", name: "Period 4" },
             { id: "lunch", time: "12:00-13:00", name: "Lunch Break" },
-            { id: 5, time: "13:10-14:00", name: "Period 5" },
-            { id: 6, time: "14:10-15:00", name: "Period 6" },
-            { id: 7, time: "15:20-16:10", name: "Period 7" },
-            { id: 8, time: "16:20-17:10", name: "Period 8" }
+            { id: 5, time: "13:10-14:00", name: "Period 5" }, { id: 6, time: "14:10-15:00", name: "Period 6" },
+            { id: 7, time: "15:20-16:10", name: "Period 7" }, { id: 8, time: "16:20-17:10", name: "Period 8" }
         ];
 
 
@@ -183,9 +139,7 @@
         classOptions.push("Other (Specify)");
 
 
-        const getTimestamp = () => {
-            return new Date().toLocaleString('en-US', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
-        };
+        const getTimestamp = () => new Date().toLocaleString('en-US', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
 
 
         function App() {
@@ -201,10 +155,10 @@
 
 
             const [currentView, setCurrentView] = useState('home');
-            const [viewHistory, setViewHistory] = useState(['home']); // 新增：歷史紀錄狀態
+            const [viewHistory, setViewHistory] = useState(['home']);
             const [activeFilter, setActiveFilter] = useState('All');
             const [activeLocationFilter, setActiveLocationFilter] = useState('All'); 
-            const [searchQuery, setSearchQuery] = useState(''); // 新增：搜尋框狀態
+            const [searchQuery, setSearchQuery] = useState('');
             const [selectedCart, setSelectedCart] = useState(null);
             const [adminTab, setAdminTab] = useState('carts');
             
@@ -213,51 +167,41 @@
 
 
             const [selectedWeek, setSelectedWeek] = useState(1);
-            const [currentRealWeek, setCurrentRealWeek] = useState(1); // 記錄真實週數
+            const [currentRealWeek, setCurrentRealWeek] = useState(1);
             const [allowSaturday, setAllowSaturday] = useState(false);
             const [hasAutoSetWeek, setHasAutoSetWeek] = useState(false);
             const currentDays = allowSaturday ? [...baseDays, "Saturday"] : baseDays;
 
 
             const [cartData, setCartData] = useState({});
-            const [usersDB, setUsersDB] = useState({});
+            const [usersDB, setUsersDB] = useState({}); 
             const [activityLogs, setActivityLogs] = useState([]); 
             
             const [currentUser, setCurrentUser] = useState(null);
             const [isAdmin, setIsAdmin] = useState(false);
             
-            const [authMode, setAuthMode] = useState('login');
-            const [loginForm, setLoginForm] = useState({ email: '', password: '' });
-            const [regForm, setRegForm] = useState({ name: '', email: '', password: '', classType: '1A', customClass: '' });
-            const [adminPwd, setAdminPwd] = useState('');
+            const [authMode, setAuthMode] = useState('login'); // 'login' or 'admin'
             
-            const [systemAdminPwd, setSystemAdminPwd] = useState('admin'); // 預設 admin，可改成加密版
-            const [adminPwdForm, setAdminPwdForm] = useState({ current: '', new: '', confirm: '' });
+            const [adminAddUserModal, setAdminAddUserModal] = useState({ isOpen: false });
+            const [addUserForm, setAddUserForm] = useState({ name: '', email: '', classType: '1A', customClass: '' });
 
 
-            const [userPwdModal, setUserPwdModal] = useState({ isOpen: false, current: '', new: '', confirm: '' });
-
-
-            const [bookingModal, setBookingModal] = useState({ isOpen: false, dayIdx: null, periodId: null, existingBooking: null, isEditing: false, isBatch: false });
+            const [bookingModal, setBookingModal] = useState({ isOpen: false, dayIdx: null, periodId: null, existingBooking: null, isEditing: false, isBatch: false, isPast: false });
             const [bookForm, setBookForm] = useState({ classType: '', customClass: '' });
             const [editBookForm, setEditBookForm] = useState({ name: '', email: '', classType: '', customClass: '' });
             const [editCartModal, setEditCartModal] = useState({ isOpen: false, cartName: null, data: null });
             const [printSelection, setPrintSelection] = useState([]);
 
 
-            // 批次預約狀態
             const [isBatchMode, setIsBatchMode] = useState(false);
-            const [batchSelection, setBatchSelection] = useState([]); // [{dayIdx, periodId, slotId}]
+            const [batchSelection, setBatchSelection] = useState([]);
+            const [myBookingsView, setMyBookingsView] = useState('list');
+            const [myBookingsTab, setMyBookingsTab] = useState('upcoming'); // 新增：'upcoming' | 'history'
 
 
-            // My Bookings 視圖模式
-            const [myBookingsView, setMyBookingsView] = useState('list'); // 'list' | 'calendar'
-
-
-            // --- 新增：導覽輔助函數 (處理上一頁邏輯) ---
             const changeView = (newView) => {
                 if (newView === currentView) return;
-                setViewHistory(prev => [...prev, newView]); // 將新頁面推入歷史紀錄
+                setViewHistory(prev => [...prev, newView]);
                 setCurrentView(newView);
             };
 
@@ -265,23 +209,22 @@
             const goBack = () => {
                 if (viewHistory.length > 1) {
                     const newHistory = [...viewHistory];
-                    newHistory.pop(); // 移除當前頁面
-                    const prevView = newHistory[newHistory.length - 1]; // 取得上一個頁面
+                    newHistory.pop();
                     setViewHistory(newHistory);
-                    setCurrentView(prevView);
+                    setCurrentView(newHistory[newHistory.length - 1]);
                 } else {
-                    setCurrentView('home'); // 如果沒有歷史紀錄了，就回首頁防呆
+                    setCurrentView('home');
                 }
             };
 
 
             const goHome = () => {
-                setViewHistory(['home']); // 重置歷史紀錄
+                setViewHistory(['home']);
                 setCurrentView('home');
             };
-            // ---------------------------------------
 
 
+            // 初始化 Firebase
             useEffect(() => {
                 const initFirebase = async () => {
                     const fb = window.fbModules;
@@ -317,57 +260,7 @@
 
                     fb.onAuthStateChanged(auth, (user) => {
                         if (!user) return;
-                        
-                        fb.onSnapshot(getCol('carts'), (snap) => {
-                            const newCarts = {};
-                            snap.forEach(d => { newCarts[d.id] = d.data(); });
-                            if (snap.empty && !window.__seededCarts) {
-                                window.__seededCarts = true;
-                                Object.entries(initialData).forEach(([k, v]) => fb.setDoc(getDocRef('carts', k), v).catch(e => {}));
-                            } else {
-                                setCartData(newCarts);
-                            }
-                        }, err => console.error("Firestore Error:", err));
-
-
-                        fb.onSnapshot(getCol('users'), (snap) => {
-                            const newUsers = {};
-                            snap.forEach(d => { newUsers[d.id] = d.data(); });
-                            if (snap.empty && !window.__seededUsers) {
-                                window.__seededUsers = true;
-                                Object.entries(initialUsers).forEach(([k, v]) => fb.setDoc(getDocRef('users', k), v).catch(e => {}));
-                            } else {
-                                setUsersDB(newUsers);
-                            }
-                        }, err => console.error("Firestore Error:", err));
-
-
-                        fb.onSnapshot(getCol('logs'), (snap) => {
-                            const newLogs = [];
-                            snap.forEach(d => { newLogs.push({ id: d.id, ...d.data() }); });
-                            newLogs.sort((a, b) => b.id - a.id);
-                            setActivityLogs(newLogs);
-                        }, err => console.error("Firestore Error:", err));
-
-
-                        fb.onSnapshot(getDocRef('settings', 'main'), (snap) => {
-                            if (snap.exists()) {
-                                const data = snap.data();
-                                if (data.semesterConfig) {
-                                    setSemesterConfig({ ...data.semesterConfig, maxAdvanceWeeks: data.semesterConfig.maxAdvanceWeeks || 2 });
-                                    setTempSemesterConfig({ ...data.semesterConfig, maxAdvanceWeeks: data.semesterConfig.maxAdvanceWeeks || 2 });
-                                }
-                                if (data.systemAdminPwd) setSystemAdminPwd(data.systemAdminPwd);
-                                if (data.allowSaturday !== undefined) setAllowSaturday(data.allowSaturday);
-                            } else {
-                                fb.setDoc(getDocRef('settings', 'main'), {
-                                    semesterConfig: { startDate: '2026-02-23', totalWeeks: 19, maxAdvanceWeeks: 2 },
-                                    systemAdminPwd: 'admin',
-                                    allowSaturday: false
-                                }).catch(e => {});
-                            }
-                            setFirebaseReady(true);
-                        }, err => console.error("Firestore Error:", err));
+                        setFirebaseReady(true);
                     });
                 };
 
@@ -377,9 +270,78 @@
             }, []);
 
 
-            // 計算當前真實週數
+            // 監聽全域資料 (Carts & Settings)
             useEffect(() => {
-                if (firebaseReady) {
+                if (!firebaseReady || firebaseReady === 'auth-error' || !dbRefs) return;
+                
+                const unsubCarts = dbRefs.fb.onSnapshot(dbRefs.getCol('carts'), (snap) => {
+                    const newCarts = {};
+                    snap.forEach(d => { newCarts[d.id] = d.data(); });
+                    
+                    if (snap.empty && !window.__seededCarts) {
+                        window.__seededCarts = true;
+                        Object.entries(initialData).forEach(([k, v]) => dbRefs.fb.setDoc(dbRefs.getDocRef('carts', k), v).catch(e => {}));
+                    } else {
+                        setCartData(newCarts);
+                    }
+                }, err => console.error("Firestore Error:", err));
+
+
+                const unsubSettings = dbRefs.fb.onSnapshot(dbRefs.getDocRef('settings', 'main'), (snap) => {
+                    if (snap.exists()) {
+                        const data = snap.data();
+                        if (data.semesterConfig) {
+                            setSemesterConfig({ ...data.semesterConfig, maxAdvanceWeeks: data.semesterConfig.maxAdvanceWeeks || 2 });
+                            setTempSemesterConfig({ ...data.semesterConfig, maxAdvanceWeeks: data.semesterConfig.maxAdvanceWeeks || 2 });
+                        }
+                        if (data.allowSaturday !== undefined) setAllowSaturday(data.allowSaturday);
+                    } else {
+                        dbRefs.fb.setDoc(dbRefs.getDocRef('settings', 'main'), {
+                            semesterConfig: { startDate: '2026-02-23', totalWeeks: 19, maxAdvanceWeeks: 2 },
+                            allowSaturday: false
+                        }).catch(e => {});
+                    }
+                }, err => console.error("Firestore Error:", err));
+
+
+                return () => { unsubCarts(); unsubSettings(); };
+            }, [firebaseReady, dbRefs]);
+
+
+            // 按需載入：管理員 Users 資料
+            useEffect(() => {
+                if (!dbRefs || !isAdmin || currentView !== 'admin' || adminTab !== 'users') return;
+                const unsubUsers = dbRefs.fb.onSnapshot(dbRefs.getCol('users'), (snap) => {
+                    const newUsers = {};
+                    snap.forEach(d => { newUsers[d.id] = d.data(); });
+                    
+                    if (snap.empty && !window.__seededUsers) {
+                        window.__seededUsers = true;
+                        Object.entries(initialUsers).forEach(([k, v]) => dbRefs.fb.setDoc(dbRefs.getDocRef('users', k), v).catch(e => {}));
+                    } else {
+                        setUsersDB(newUsers);
+                    }
+                });
+                return () => unsubUsers();
+            }, [dbRefs, isAdmin, currentView, adminTab]);
+
+
+            // 按需載入：管理員 Logs 資料
+            useEffect(() => {
+                if (!dbRefs || !isAdmin || currentView !== 'admin' || adminTab !== 'logs') return;
+                const unsubLogs = dbRefs.fb.onSnapshot(dbRefs.getCol('logs'), (snap) => {
+                    let newLogs = [];
+                    snap.forEach(d => { newLogs.push({ id: d.id, ...d.data() }); });
+                    newLogs.sort((a, b) => Number(b.id) - Number(a.id));
+                    setActivityLogs(newLogs.slice(0, 100));
+                });
+                return () => unsubLogs();
+            }, [dbRefs, isAdmin, currentView, adminTab]);
+
+
+            // 計算真實週數
+            useEffect(() => {
+                if (firebaseReady && firebaseReady !== 'auth-error') {
                     const now = new Date();
                     const [year, month, day] = semesterConfig.startDate.split('-').map(Number);
                     const start = new Date(year, month - 1, day);
@@ -404,7 +366,6 @@
             }, [firebaseReady, semesterConfig, hasAutoSetWeek]);
 
 
-            // 切換週數時清空批次選擇
             useEffect(() => {
                 if (selectedWeek > semesterConfig.totalWeeks) setSelectedWeek(semesterConfig.totalWeeks);
                 setBatchSelection([]);
@@ -412,24 +373,18 @@
 
 
             const sortedAllCarts = Object.entries(cartData).sort((a, b) => (a[1].order || 0) - (b[1].order || 0));
-            
-            // 結合各種過濾器（包含新加入的搜尋功能）
             const filteredCarts = sortedAllCarts
                 .filter(([name, data]) => activeFilter === 'All' || data.type === activeFilter)
                 .filter(([name, data]) => activeLocationFilter === 'All' || data.location === activeLocationFilter)
                 .filter(([name, data]) => name.toLowerCase().includes(searchQuery.toLowerCase()) || (data.notes && data.notes.toLowerCase().includes(searchQuery.toLowerCase())));
-            
             const locations = ['All', ...Array.from(new Set(Object.values(cartData).map(c => c.location).filter(Boolean)))];
             
             const moveCart = async (cartName, direction) => {
                 const sortedNames = sortedAllCarts.map(arr => arr[0]);
                 const idx = sortedNames.indexOf(cartName);
-                
-                if (direction === 'up' && idx > 0) {
-                    [sortedNames[idx - 1], sortedNames[idx]] = [sortedNames[idx], sortedNames[idx - 1]];
-                } else if (direction === 'down' && idx < sortedNames.length - 1) {
-                    [sortedNames[idx + 1], sortedNames[idx]] = [sortedNames[idx], sortedNames[idx + 1]];
-                } else { return; }
+                if (direction === 'up' && idx > 0) [sortedNames[idx - 1], sortedNames[idx]] = [sortedNames[idx], sortedNames[idx - 1]];
+                else if (direction === 'down' && idx < sortedNames.length - 1) [sortedNames[idx + 1], sortedNames[idx]] = [sortedNames[idx], sortedNames[idx + 1]];
+                else return;
                 
                 for (let i = 0; i < sortedNames.length; i++) {
                     const cName = sortedNames[i];
@@ -486,97 +441,107 @@
             };
 
 
-            const handleAuthSubmit = async (e) => {
-                e.preventDefault();
-                if (authMode === 'admin') {
-                    // Admin 密碼驗證 (向下相容：允許明文比對或加密比對)
-                    const hashedInput = await sha256(adminPwd);
-                    if (adminPwd === systemAdminPwd || hashedInput === systemAdminPwd) {
+            // 全新升級的 Google 登入邏輯 (整合最高權限判斷)
+            const handleGoogleLogin = async () => {
+                const ADMIN_EMAIL = 'ptaopenhour@ibsh.tw'; // 設定最高權限帳號
+
+
+                if (isCanvasEnv) {
+                    // 由於安全與跨域限制，在這種線上預覽環境中無法正常彈出 Google 登入視窗。
+                    // 我們使用 prompt 模擬取得使用者的 Email 來進行白名單驗證測試。
+                    const testEmail = prompt(`【預覽環境模擬登入】\n\n請輸入你想模擬驗證的信箱:\n(最高權限管理員請輸入 ${ADMIN_EMAIL})`, ADMIN_EMAIL);
+                    if (!testEmail) return;
+
+
+                    // 1. 判斷是否為最高權限管理員
+                    if (testEmail.trim() === ADMIN_EMAIL) {
                         setIsAdmin(true);
-                        setCurrentUser({ name: 'Admin', email: 'admin@school.edu', defaultClass: 'Admin', customClass: '' });
+                        setCurrentUser({ name: 'System Admin', email: ADMIN_EMAIL, defaultClass: 'Admin', customClass: '' });
                         goHome();
-                        setAdminPwd(''); 
-                    } else {
-                        showAlert("Incorrect admin password!");
-                    }
-                } else if (authMode === 'login') {
-                    const user = usersDB[loginForm.email];
-                    if (user) {
-                        const hashedInput = await sha256(loginForm.password);
-                        // 向下相容機制：舊帳號可能是明文，新帳號是加密文
-                        if (user.password === loginForm.password || user.password === hashedInput) {
-                            setCurrentUser(user);
-                            goHome();
-                            return;
-                        }
-                    }
-                    showAlert("Incorrect email or password!\nPlease contact the admin if you forgot it.");
-                } else if (authMode === 'register') {
-                    if (usersDB[regForm.email]) {
-                        showAlert("This email is already registered!");
                         return;
                     }
-                    const hashedPassword = await sha256(regForm.password);
-                    const newUser = {
-                        name: regForm.name.trim(), email: regForm.email.trim(), password: hashedPassword, defaultClass: regForm.classType, customClass: regForm.customClass
-                    };
-                    await dbRefs.fb.setDoc(dbRefs.getDocRef('users', newUser.email), newUser);
-                    setCurrentUser(newUser);
-                    addLog("User Registration", "System", `Registered email: ${newUser.email}`, newUser.name);
-                    goHome();
-                }
-            };
 
 
-            const handleAdminPwdChange = async (e) => {
-                e.preventDefault();
-                const hashedCurrent = await sha256(adminPwdForm.current);
-                if (adminPwdForm.current !== systemAdminPwd && hashedCurrent !== systemAdminPwd) return showAlert("Current password is incorrect!");
-                if (adminPwdForm.new !== adminPwdForm.confirm) return showAlert("New passwords do not match!");
-                if (adminPwdForm.new.length < 4) return showAlert("Password must be at least 4 characters long.");
-                
-                const hashedNew = await sha256(adminPwdForm.new);
-                await dbRefs.fb.setDoc(dbRefs.getDocRef('settings', 'main'), { systemAdminPwd: hashedNew }, { merge: true });
-                addLog("Change Password", "System", "Administrator password was updated");
-                showAlert("Admin password updated successfully!");
-                setAdminPwdForm({ current: '', new: '', confirm: '' });
-            };
+                    // 2. 若不是管理員，進行白名單驗證
+                    const userDocRef = dbRefs.getDocRef('users', testEmail.trim());
+                    const userDoc = await dbRefs.fb.getDoc(userDocRef);
+                    if (userDoc.exists()) {
+                        setCurrentUser(userDoc.data());
+                        setIsAdmin(false);
+                        goHome();
+                    } else {
+                        showAlert(`Access Denied.\nYour account (${testEmail}) is not in the allowed whitelist.`);
+                    }
+                    return;
+                }
 
 
-            const handleUserPwdChange = async (e) => {
-                e.preventDefault();
-                const { current, new: newPwd, confirm } = userPwdModal;
-                
-                // 檢查舊密碼 (向下相容：支援明文舊密碼與 SHA-256 新密碼)
-                const hashedCurrent = await sha256(current);
-                if (currentUser.password !== current && currentUser.password !== hashedCurrent) {
-                    return showAlert("Current password is incorrect! (目前密碼錯誤)");
-                }
-                // 檢查新密碼是否一致與長度
-                if (newPwd !== confirm) {
-                    return showAlert("New passwords do not match! (新密碼不一致)");
-                }
-                if (newPwd.length < 6) {
-                    return showAlert("Password must be at least 6 characters long.\n(密碼長度至少需要 6 個字元)");
-                }
-                
+                // ============================================
+                // 以下是部署到正式網域後會執行的「真實 Google 登入」
+                // ============================================
                 try {
-                    // 將新密碼加密並寫入資料庫
-                    const hashedNew = await sha256(newPwd);
-                    await dbRefs.fb.setDoc(dbRefs.getDocRef('users', currentUser.email), { 
-                        ...currentUser, 
-                        password: hashedNew 
-                    }, { merge: true });
-                    
-                    // 更新當下畫面中的使用者狀態
-                    setCurrentUser({ ...currentUser, password: hashedNew });
-                    
-                    addLog("Change Password", "System", "User changed their password", currentUser.name);
-                    showAlert("Password updated successfully! (密碼修改成功)");
-                    setUserPwdModal({ isOpen: false, current: '', new: '', confirm: '' });
-                } catch (err) {
+                    const provider = new dbRefs.fb.GoogleAuthProvider();
+                    const result = await dbRefs.fb.signInWithPopup(dbRefs.auth, provider);
+                    const userEmail = result.user.email;
+
+
+                    // 1. 判斷是否為最高權限管理員
+                    if (userEmail === ADMIN_EMAIL) {
+                        setIsAdmin(true);
+                        setCurrentUser({ name: 'System Admin', email: ADMIN_EMAIL, defaultClass: 'Admin', customClass: '' });
+                        goHome();
+                        return;
+                    }
+
+
+                    // 2. 若不是管理員，進行白名單驗證：去資料庫尋找這個 Email 是否存在
+                    const userDocRef = dbRefs.getDocRef('users', userEmail);
+                    const userDoc = await dbRefs.fb.getDoc(userDocRef);
+
+
+                    if (userDoc.exists()) {
+                        // 驗證成功，登入系統
+                        setCurrentUser(userDoc.data());
+                        setIsAdmin(false);
+                        goHome();
+                    } else {
+                        // 驗證失敗：將使用者從 Google 登出，並阻擋進入
+                        await dbRefs.fb.signOut(dbRefs.auth);
+                        showAlert(`Access Denied.\nYour email (${userEmail}) is not registered in the whitelist.\nPlease contact the administrator.`);
+                    }
+                } catch (error) {
+                    console.error(error);
+                    // 排除使用者自行關閉視窗的錯誤
+                    if (error.code !== 'auth/popup-closed-by-user') {
+                        showAlert(`Google Login Failed: ${error.message}`);
+                    }
+                }
+            };
+
+
+            // 管理員新增使用者 (不再需要密碼)
+            const handleAdminAddUser = async (e) => {
+                e.preventDefault();
+                const email = addUserForm.email.trim();
+                try {
+                    const existingDoc = await dbRefs.fb.getDoc(dbRefs.getDocRef('users', email));
+                    if (existingDoc.exists()) {
+                        return showAlert("This email is already registered in the whitelist!");
+                    }
+                    const newUser = {
+                        name: addUserForm.name.trim(), 
+                        email: email, 
+                        defaultClass: addUserForm.classType, 
+                        customClass: addUserForm.customClass
+                    };
+                    await dbRefs.fb.setDoc(dbRefs.getDocRef('users', email), newUser);
+                    addLog("Add User", "System", `Admin added user to whitelist: ${email}`);
+                    showAlert("Teacher added to the whitelist successfully!");
+                    setAddUserForm({ name: '', email: '', classType: '1A', customClass: '' });
+                    setAdminAddUserModal({ isOpen: false });
+                } catch(err) {
                     console.error(err);
-                    showAlert("Update failed. Please try again. (更新失敗，請稍後再試)");
+                    showAlert("Failed to add user.");
                 }
             };
 
@@ -601,30 +566,26 @@
             };
 
 
-            const resetUserPassword = (email) => {
-                showConfirm(`Reset password for ${usersDB[email].name} to "123456"?`, async () => {
-                    const hashedResetPwd = await sha256("123456");
-                    await dbRefs.fb.setDoc(dbRefs.getDocRef('users', email), { ...usersDB[email], password: hashedResetPwd }, { merge: true });
-                    addLog("Reset Password", "System", `Admin reset password for ${email}`);
-                    showAlert("Password reset to 123456.");
-                });
-            };
-
-
             const deleteUser = (email) => {
-                showConfirm(`Delete user ${usersDB[email].name}?\nThis cannot be undone.`, async () => {
+                showConfirm(`Delete user ${usersDB[email].name} from whitelist?\nThey will no longer be able to log in.`, async () => {
                     await dbRefs.fb.deleteDoc(dbRefs.getDocRef('users', email));
-                    addLog("Delete User", "System", `Admin deleted account: ${email}`);
+                    addLog("Delete User", "System", `Admin removed account from whitelist: ${email}`);
                 });
             };
 
 
-            // 處理點擊格子：加入預約期限阻擋與批次選擇機制
+            // 計算今天真實的 dayIdx (0: Mon, 1: Tue... 5: Sat, 6: Sun)
+            const todayDay = new Date().getDay();
+            const currentRealDayIdx = todayDay === 0 ? 6 : todayDay - 1;
+
+
             const handleSlotClick = (dayIdx, periodId, existingBooking) => {
                 if (periodId === 'lunch') return; 
 
 
-                // 檢查預約期限
+                const isPastSlot = selectedWeek < currentRealWeek || (selectedWeek === currentRealWeek && dayIdx < currentRealDayIdx);
+
+
                 const isPastLimit = !isAdmin && (selectedWeek > currentRealWeek + (semesterConfig.maxAdvanceWeeks || 2));
                 if (isPastLimit) {
                     showAlert(`⚠️ Booking Limit Exceeded\n\nTo ensure fairness, the system only allows bookings up to ${semesterConfig.maxAdvanceWeeks || 2} week(s) in advance.\nPlease try again closer to your desired date!`);
@@ -633,10 +594,14 @@
 
 
                 if (existingBooking) {
-                    // 如果已經被訂走，點擊就開啟預覽/編輯模式
-                    setBookingModal({ isOpen: true, dayIdx, periodId, existingBooking, isEditing: false, isBatch: false });
+                    setBookingModal({ isOpen: true, dayIdx, periodId, existingBooking, isEditing: false, isBatch: false, isPast: isPastSlot });
                 } else {
-                    // 如果是空位
+                    if (isPastSlot && !isAdmin) {
+                        showAlert("⚠️ Cannot book slots in the past!");
+                        return;
+                    }
+
+
                     if (isBatchMode) {
                         const slotId = `w${selectedWeek}_d${dayIdx}_p${periodId}`;
                         setBatchSelection(prev => 
@@ -645,15 +610,13 @@
                                 : [...prev, { dayIdx, periodId, slotId }]
                         );
                     } else {
-                        // 單筆預約模式
                         setBookForm({ classType: currentUser.defaultClass, customClass: currentUser.customClass });
-                        setBookingModal({ isOpen: true, dayIdx, periodId, existingBooking: null, isEditing: false, isBatch: false });
+                        setBookingModal({ isOpen: true, dayIdx, periodId, existingBooking: null, isEditing: false, isBatch: false, isPast: false });
                     }
                 }
             };
 
 
-            // 執行真正的交易寫入邏輯
             const executeBookingTransaction = async (slotsToBook, finalClass) => {
                 const cartRef = dbRefs.getDocRef('carts', selectedCart);
 
@@ -668,25 +631,19 @@
                         const currentSchedule = currentData.schedule || {};
 
 
-                        // 檢查所有想要預約的格子是否已被搶走
                         for (const slot of slotsToBook) {
                             if (currentSchedule[slot.slotId]) {
                                 throw "SLOT_ALREADY_TAKEN"; 
                             }
                             currentSchedule[slot.slotId] = { 
-                                name: currentUser.name, 
-                                email: currentUser.email, 
-                                className: finalClass, 
-                                ownerEmail: currentUser.email 
+                                name: currentUser.name, email: currentUser.email, 
+                                className: finalClass, ownerEmail: currentUser.email 
                             };
                         }
-
-
                         transaction.update(cartRef, { schedule: currentSchedule });
                     });
 
 
-                    // 成功後的收尾
                     const details = slotsToBook.length === 1 
                         ? `Week ${selectedWeek} ${currentDays[slotsToBook[0].dayIdx]} P${slotsToBook[0].periodId} (${finalClass})`
                         : `Batch booked ${slotsToBook.length} slots for Week ${selectedWeek} (${finalClass})`;
@@ -697,27 +654,18 @@
                     setIsBatchMode(false);
                     
                 } catch (error) {
-                    if (error === "SLOT_ALREADY_TAKEN") {
-                        showAlert("慢了一步！你選的時段中，有部分已被別人搶走囉，請重新選擇。");
-                    } else if (error === "CART_NOT_FOUND") {
-                        showAlert("找不到該設備，可能已被管理員刪除。");
-                    } else {
-                        console.error("Transaction failed: ", error);
-                        showAlert("預約發生錯誤，請稍後檢查網路連線再試。");
-                    }
+                    if (error === "SLOT_ALREADY_TAKEN") showAlert("慢了一步！你選的時段中，有部分已被別人搶走囉，請重新選擇。");
+                    else if (error === "CART_NOT_FOUND") showAlert("找不到該設備，可能已被管理員刪除。");
+                    else showAlert("預約發生錯誤，請稍後檢查網路連線再試。");
                     setBookingModal({ isOpen: false, dayIdx: null, periodId: null, existingBooking: null, isEditing: false, isBatch: false });
                 }
             };
 
 
-            // 送出前檢查是否有跨車「衝堂」
             const checkConflictsAndSubmit = async () => {
                 const finalClass = bookForm.classType === 'Other (Specify)' ? bookForm.customClass : bookForm.classType;
-                
-                // 整理出這次想預約的所有 Slot ID
                 const slotsToBook = bookingModal.isBatch ? batchSelection : [{ dayIdx: bookingModal.dayIdx, periodId: bookingModal.periodId, slotId: `w${selectedWeek}_d${bookingModal.dayIdx}_p${bookingModal.periodId}` }];
                 
-                // 比對本地端資料：這個班級在同一個時間，是不是已經借了其他車？
                 const conflictingSlots = slotsToBook.filter(slot => {
                     return Object.entries(cartData).some(([cName, cData]) => {
                         return cName !== selectedCart && cData.schedule && cData.schedule[slot.slotId]?.className === finalClass;
@@ -738,16 +686,13 @@
             const cancelBooking = async () => {
                 const slotId = `w${selectedWeek}_d${bookingModal.dayIdx}_p${bookingModal.periodId}`;
                 const existing = cartData[selectedCart].schedule[slotId];
-                
                 const updatedSchedule = { ...cartData[selectedCart].schedule };
                 delete updatedSchedule[slotId];
 
 
                 await dbRefs.fb.setDoc(dbRefs.getDocRef('carts', selectedCart), { ...cartData[selectedCart], schedule: updatedSchedule });
-                
                 const actionName = isAdmin ? "Force Cancel" : "Cancel Booking";
                 addLog(actionName, selectedCart, `Week ${selectedWeek} ${currentDays[bookingModal.dayIdx]} P${bookingModal.periodId} (${existing.name})`);
-                
                 setBookingModal({ isOpen: false, dayIdx: null, periodId: null, existingBooking: null, isEditing: false, isBatch: false });
             };
 
@@ -773,7 +718,6 @@
 
 
                 await dbRefs.fb.setDoc(dbRefs.getDocRef('carts', selectedCart), { ...cartData[selectedCart], schedule: updatedSchedule });
-                
                 addLog("Admin Edit", selectedCart, `Week ${selectedWeek} ${currentDays[bookingModal.dayIdx]} P${bookingModal.periodId} (Updated: ${editBookForm.name})`);
                 setBookingModal({ isOpen: false, dayIdx: null, periodId: null, existingBooking: null, isEditing: false, isBatch: false });
             };
@@ -820,14 +764,7 @@
                             if (bookingInfo.ownerEmail === currentUser.email) {
                                 const match = slotId.match(/w(\d+)_d(\d+)_p(\w+)/);
                                 if (match) {
-                                    myBookings.push({
-                                        cartName,
-                                        week: parseInt(match[1]),
-                                        dayIdx: parseInt(match[2]),
-                                        periodId: match[3],
-                                        slotId,
-                                        className: bookingInfo.className
-                                    });
+                                    myBookings.push({ cartName, week: parseInt(match[1]), dayIdx: parseInt(match[2]), periodId: match[3], slotId, className: bookingInfo.className });
                                 }
                             }
                         });
@@ -838,11 +775,8 @@
                 myBookings.sort((a, b) => {
                     if (a.week !== b.week) return a.week - b.week;
                     if (a.dayIdx !== b.dayIdx) return a.dayIdx - b.dayIdx;
-                    const pA = periods.findIndex(p => p.id == a.periodId);
-                    const pB = periods.findIndex(p => p.id == b.periodId);
-                    return pA - pB;
+                    return periods.findIndex(p => p.id == a.periodId) - periods.findIndex(p => p.id == b.periodId);
                 });
-                
                 return myBookings;
             };
 
@@ -854,11 +788,16 @@
                     await dbRefs.fb.setDoc(dbRefs.getDocRef('carts', cartName), { ...cartData[cartName], schedule: updatedSchedule });
                     
                     const match = slotId.match(/w(\d+)_d(\d+)_p(\w+)/);
-                    if (match) {
-                        addLog("Cancel Booking", cartName, `W${match[1]} ${currentDays[parseInt(match[2])]} P${match[3]} (${className})`);
-                    }
+                    if (match) addLog("Cancel Booking", cartName, `W${match[1]} ${currentDays[parseInt(match[2])]} P${match[3]} (${className})`);
                 });
             };
+
+
+            // 分類 My Bookings 的邏輯
+            const allMyBookings = getMyBookings();
+            const upcomingBookings = allMyBookings.filter(b => b.week > currentRealWeek || (b.week === currentRealWeek && b.dayIdx >= currentRealDayIdx));
+            const historyBookings = allMyBookings.filter(b => b.week < currentRealWeek || (b.week === currentRealWeek && b.dayIdx < currentRealDayIdx));
+            const displayedBookings = myBookingsTab === 'upcoming' ? upcomingBookings : historyBookings;
 
 
             if (firebaseReady === 'auth-error') {
@@ -897,73 +836,36 @@
             // ================= LOGIN SCREEN =================
             if (!currentUser && !isAdmin) {
                 return (
-                    <div className="min-h-screen bg-duo-grayLight flex items-center justify-center p-4">
-                        <div className="w-full max-w-md">
+                    <div className="min-h-screen bg-duo-grayLight flex items-center justify-center p-4 relative overflow-hidden">
+                        
+                        {/* 裝飾性背景圖示 */}
+                        <i className="fa-solid fa-laptop text-duo-blue/10 text-[20rem] absolute -top-20 -left-20 -rotate-12 pointer-events-none"></i>
+                        <i className="fa-solid fa-tablet-screen-button text-duo-green/10 text-[15rem] absolute -bottom-10 -right-10 rotate-12 pointer-events-none"></i>
+                        
+                        <div className="w-full max-w-md relative z-10">
                             <div className="text-center mb-8">
-                                <div className="inline-block bg-white p-4 rounded-3xl border-2 border-duo-grayBorder shadow-[0_6px_0_0_#e5e5e5] mb-4">
-                                    <i className="fa-solid fa-laptop-chromebook text-duo-green text-5xl"></i>
+                                <div className="inline-block bg-white p-5 rounded-3xl border-2 border-duo-grayBorder shadow-[0_6px_0_0_#e5e5e5] mb-5">
+                                    <i className="fa-solid fa-graduation-cap text-duo-green text-6xl"></i>
                                 </div>
-                                <h1 className="text-3xl font-extrabold text-duo-text tracking-tight">IBSH Chromebook Carts Reservation</h1>
-                                <p className="text-duo-text/60 font-bold mt-2">{authMode === 'login' ? 'Let\'s get booking!' : authMode === 'register' ? 'Create an account' : 'Admin Access'}</p>
+                                <h1 className="text-3xl font-extrabold text-duo-text tracking-tight">IBSH Chromebooks</h1>
+                                <p className="text-duo-text/60 font-bold mt-2 text-lg">Equipment Reservation System</p>
                             </div>
 
 
                             <div className="bg-white rounded-[2rem] border-2 border-duo-grayBorder shadow-[0_8px_0_0_#e5e5e5] p-8">
-                                {authMode !== 'login' && (
-                                    <button onClick={() => setAuthMode('login')} className="text-duo-grayBorder hover:text-duo-text font-bold mb-6 flex items-center uppercase tracking-wider text-sm transition-colors">
-                                        <i className="fa-solid fa-chevron-left mr-2"></i> Back
-                                    </button>
-                                )}
-
-
-                                <form onSubmit={handleAuthSubmit} className="space-y-5">
-                                    {authMode === 'login' && (
-                                        <>
-                                            <div>
-                                                <label className="block text-xs font-extrabold text-duo-text/50 uppercase tracking-wider mb-2">Email Address</label>
-                                                <input required type="email" value={loginForm.email} onChange={e => setLoginForm({...loginForm, email: e.target.value})} className="w-full px-5 py-4 bg-duo-grayLight border-2 border-duo-grayBorder rounded-2xl focus:bg-white focus:border-duo-blue outline-none font-bold text-duo-text transition-all" placeholder="name@ibsh.tw" />
-                                            </div>
-                                            <div>
-                                                <label className="block text-xs font-extrabold text-duo-text/50 uppercase tracking-wider mb-2 flex justify-between">
-                                                    <span>Password</span>
-                                                </label>
-                                                <input required type="password" value={loginForm.password} onChange={e => setLoginForm({...loginForm, password: e.target.value})} className="w-full px-5 py-4 bg-duo-grayLight border-2 border-duo-grayBorder rounded-2xl focus:bg-white focus:border-duo-blue outline-none font-bold text-duo-text transition-all" placeholder="••••••••" />
-                                            </div>
-                                            <button type="submit" className="w-full mt-2 bg-duo-green text-white font-extrabold uppercase py-4 rounded-2xl shadow-[0_4px_0_0_#58a700] hover:bg-[#46a302] active:shadow-none active:translate-y-[4px] transition-all tracking-wider text-lg">
-                                                Log In
-                                            </button>
-                                            
-                                            <div className="pt-6 mt-6 border-t-2 border-duo-grayBorder flex flex-col gap-3">
-                                                <button type="button" onClick={() => setAuthMode('register')} className="w-full bg-white text-duo-blue font-extrabold uppercase py-3 rounded-2xl border-2 border-duo-grayBorder shadow-[0_4px_0_0_#e5e5e5] hover:bg-blue-50 active:shadow-none active:translate-y-[4px] transition-all tracking-wider">
-                                                    Create Account
-                                                </button>
-                                                <button type="button" onClick={() => setAuthMode('admin')} className="w-full text-duo-text/40 font-bold uppercase tracking-wider text-sm hover:text-duo-text mt-2 transition-colors">
-                                                    <i className="fa-solid fa-shield-halved mr-1"></i> Admin Portal
-                                                </button>
-                                            </div>
-                                        </>
-                                    )}
-                                    {authMode === 'register' && (
-                                        <>
-                                            <div><label className="block text-xs font-extrabold text-duo-text/50 uppercase tracking-wider mb-2">Full Name</label><input required type="text" value={regForm.name} onChange={e => setRegForm({...regForm, name: e.target.value})} className="w-full px-5 py-3 bg-duo-grayLight border-2 border-duo-grayBorder rounded-2xl focus:bg-white focus:border-duo-blue outline-none font-bold transition-all" /></div>
-                                            <div><label className="block text-xs font-extrabold text-duo-text/50 uppercase tracking-wider mb-2">Email (Login ID)</label><input required type="email" value={regForm.email} onChange={e => setRegForm({...regForm, email: e.target.value})} className="w-full px-5 py-3 bg-duo-grayLight border-2 border-duo-grayBorder rounded-2xl focus:bg-white focus:border-duo-blue outline-none font-bold transition-all" /></div>
-                                            <div><label className="block text-xs font-extrabold text-duo-text/50 uppercase tracking-wider mb-2">Set Password</label><input required type="password" minLength="6" value={regForm.password} onChange={e => setRegForm({...regForm, password: e.target.value})} placeholder="At least 6 chars" className="w-full px-5 py-3 bg-duo-grayLight border-2 border-duo-grayBorder rounded-2xl focus:bg-white focus:border-duo-blue outline-none font-bold transition-all" /></div>
-                                            <div><label className="block text-xs font-extrabold text-duo-text/50 uppercase tracking-wider mb-2">Default Class/Dept</label><select value={regForm.classType} onChange={e => setRegForm({...regForm, classType: e.target.value})} className="w-full px-5 py-3 bg-duo-grayLight border-2 border-duo-grayBorder rounded-2xl focus:bg-white focus:border-duo-blue outline-none font-bold transition-all appearance-none">{classOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}</select></div>
-                                            {regForm.classType === 'Other (Specify)' && <input required type="text" value={regForm.customClass} onChange={e => setRegForm({...regForm, customClass: e.target.value})} placeholder="Specify Department" className="w-full px-5 py-3 bg-duo-grayLight border-2 border-duo-grayBorder rounded-2xl focus:bg-white focus:border-duo-blue outline-none font-bold transition-all mt-2" />}
-                                            <button type="submit" className="w-full mt-4 bg-duo-blue text-white font-extrabold uppercase py-4 rounded-2xl shadow-[0_4px_0_0_#1899d6] hover:bg-[#1899d6] active:shadow-none active:translate-y-[4px] transition-all tracking-wider text-lg">
-                                                Register
-                                            </button>
-                                        </>
-                                    )}
-                                    {authMode === 'admin' && (
-                                        <>
-                                            <div><label className="block text-xs font-extrabold text-duo-text/50 uppercase tracking-wider mb-2 text-center">Admin Password</label><input required type="password" value={adminPwd} onChange={e => setAdminPwd(e.target.value)} className="w-full px-5 py-4 bg-duo-grayLight border-2 border-duo-grayBorder rounded-2xl focus:bg-white focus:border-duo-text outline-none font-bold text-duo-text transition-all text-center tracking-widest text-lg" autoFocus /></div>
-                                            <button type="submit" className="w-full mt-4 bg-duo-text text-white font-extrabold uppercase py-4 rounded-2xl shadow-[0_4px_0_0_#2b2b2b] hover:bg-black active:shadow-none active:translate-y-[4px] transition-all tracking-wider text-lg">
-                                                Enter Dashboard
-                                            </button>
-                                        </>
-                                    )}
-                                </form>
+                                <div className="space-y-6">
+                                    <div className="text-center">
+                                        <p className="text-sm font-bold text-gray-500 mb-6">Please sign in with your authorized school Google account to continue.</p>
+                                        
+                                        <button onClick={handleGoogleLogin} className="w-full bg-white text-duo-text border-2 border-duo-grayBorder font-extrabold uppercase py-4 rounded-2xl shadow-[0_4px_0_0_#e5e5e5] hover:bg-gray-50 hover:border-gray-300 active:shadow-none active:translate-y-[4px] transition-all tracking-wider text-lg flex items-center justify-center">
+                                            <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" className="w-6 h-6 mr-3" />
+                                            Sign in with Google
+                                        </button>
+                                    </div>
+                                    <div className="text-center mt-4">
+                                        <p className="text-xs font-bold text-gray-400">Admin access is automatically granted for authorized accounts.</p>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -988,9 +890,11 @@
                                 </button>
 
 
-                                <button onClick={() => changeView('my-bookings')} className={`px-4 py-2.5 font-extrabold uppercase tracking-wider rounded-2xl transition-all text-xs sm:text-sm ${currentView === 'my-bookings' ? 'bg-duo-blue text-white shadow-[0_4px_0_0_#1899d6] active:shadow-none active:translate-y-[4px]' : 'bg-white border-2 border-duo-grayBorder text-duo-blue shadow-[0_4px_0_0_#e5e5e5] hover:bg-blue-50 active:shadow-none active:translate-y-[4px]'}`}>
-                                    <i className="fa-solid fa-calendar-check sm:mr-1"></i> <span className="hidden sm:inline">My Bookings</span>
-                                </button>
+                                {!isAdmin && (
+                                    <button onClick={() => changeView('my-bookings')} className={`px-4 py-2.5 font-extrabold uppercase tracking-wider rounded-2xl transition-all text-xs sm:text-sm ${currentView === 'my-bookings' ? 'bg-duo-blue text-white shadow-[0_4px_0_0_#1899d6] active:shadow-none active:translate-y-[4px]' : 'bg-white border-2 border-duo-grayBorder text-duo-blue shadow-[0_4px_0_0_#e5e5e5] hover:bg-blue-50 active:shadow-none active:translate-y-[4px]'}`}>
+                                        <i className="fa-solid fa-calendar-check sm:mr-1"></i> <span className="hidden sm:inline">My Bookings</span>
+                                    </button>
+                                )}
 
 
                                 {isAdmin && (
@@ -1005,10 +909,7 @@
                                         <i className={`fa-solid ${isAdmin ? 'fa-shield-halved text-duo-yellow' : 'fa-user'} mr-2`}></i>
                                         {currentUser.name}
                                     </div>
-                                    <button onClick={() => setUserPwdModal({ isOpen: true, current: '', new: '', confirm: '' })} className="px-3 h-full border-l-2 border-duo-grayBorder text-gray-400 hover:text-duo-yellow hover:bg-yellow-50 transition-colors" title="Change Password">
-                                        <i className="fa-solid fa-key"></i>
-                                    </button>
-                                    <button onClick={() => { setCurrentUser(null); setIsAdmin(false); setAuthMode('login'); }} className="px-3 h-full border-l-2 border-duo-grayBorder text-gray-400 hover:text-duo-red hover:bg-red-50 transition-colors" title="Log Out">
+                                    <button onClick={async () => { await dbRefs.fb.signOut(dbRefs.auth); setCurrentUser(null); setIsAdmin(false); setAuthMode('login'); }} className="px-3 h-full border-l-2 border-duo-grayBorder text-gray-400 hover:text-duo-red hover:bg-red-50 transition-colors" title="Log Out">
                                         <i className="fa-solid fa-right-from-bracket"></i>
                                     </button>
                                 </div>
@@ -1054,7 +955,7 @@
                     <main className="max-w-7xl mx-auto px-4 py-8 no-print">
                         
                         {/* --- View: My Bookings --- */}
-                        {currentView === 'my-bookings' && (
+                        {currentView === 'my-bookings' && !isAdmin && (
                             <div className="animate-[fadeIn_0.3s_ease-out]">
                                 <div className="mb-6 flex items-center justify-between">
                                     <button onClick={goBack} className="text-gray-400 font-extrabold uppercase tracking-wider hover:text-duo-text transition-colors flex items-center border-2 border-duo-grayBorder px-4 py-2 rounded-xl bg-white hover:bg-gray-50">
@@ -1073,7 +974,7 @@
                                 </div>
 
 
-                                {getMyBookings().length === 0 ? (
+                                {allMyBookings.length === 0 ? (
                                     <div className="bg-white rounded-3xl border-2 border-duo-grayBorder shadow-duo-card p-12 text-center flex flex-col items-center">
                                         <div className="w-24 h-24 bg-gray-100 rounded-full flex items-center justify-center mb-6 border-4 border-white shadow-sm">
                                             <i className="fa-regular fa-face-frown-open text-5xl text-gray-300"></i>
@@ -1086,45 +987,70 @@
                                     </div>
                                 ) : (
                                     myBookingsView === 'list' ? (
-                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-                                            {getMyBookings().map((b, idx) => {
-                                                const targetPeriod = periods.find(p => p.id == b.periodId);
-                                                return (
-                                                    <div key={idx} className="bg-white rounded-3xl border-2 border-duo-grayBorder shadow-[0_6px_0_0_#e5e5e5] p-5 flex flex-col relative overflow-hidden group hover:border-duo-blue transition-colors">
-                                                        <div className="absolute top-0 left-0 w-2 h-full bg-duo-blue"></div>
-                                                        <div className="flex justify-between items-start pl-2 mb-3">
-                                                            <div>
-                                                                <h3 className="font-extrabold text-xl text-duo-text flex items-center">
-                                                                    {getIcon(cartData[b.cartName].type)}
-                                                                    <span className="ml-3">{b.cartName}</span>
-                                                                </h3>
+                                        <div className="animate-[fadeIn_0.3s_ease-out]">
+                                            <div className="flex gap-2 overflow-x-auto hide-scrollbar py-2 mb-6">
+                                                <button onClick={() => setMyBookingsTab('upcoming')} className={`px-6 py-3 rounded-2xl font-extrabold uppercase tracking-wider text-sm transition-all whitespace-nowrap ${myBookingsTab === 'upcoming' ? 'bg-duo-blue/10 text-duo-blue border-2 border-duo-blue' : 'bg-white text-gray-400 border-2 border-duo-grayBorder hover:bg-gray-50'}`}>
+                                                    Upcoming ({upcomingBookings.length})
+                                                </button>
+                                                <button onClick={() => setMyBookingsTab('history')} className={`px-6 py-3 rounded-2xl font-extrabold uppercase tracking-wider text-sm transition-all whitespace-nowrap ${myBookingsTab === 'history' ? 'bg-duo-blue/10 text-duo-blue border-2 border-duo-blue' : 'bg-white text-gray-400 border-2 border-duo-grayBorder hover:bg-gray-50'}`}>
+                                                    History ({historyBookings.length})
+                                                </button>
+                                            </div>
+
+
+                                            {displayedBookings.length === 0 ? (
+                                                <div className="text-center py-16 bg-white rounded-3xl border-2 border-duo-grayBorder border-dashed">
+                                                    <i className="fa-solid fa-box-open text-5xl text-gray-300 mb-4"></i>
+                                                    <h3 className="text-xl font-extrabold text-gray-400">No {myBookingsTab} bookings</h3>
+                                                </div>
+                                            ) : (
+                                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                                                    {displayedBookings.map((b, idx) => {
+                                                        const targetPeriod = periods.find(p => p.id == b.periodId);
+                                                        return (
+                                                            <div key={idx} className={`bg-white rounded-3xl border-2 border-duo-grayBorder shadow-[0_6px_0_0_#e5e5e5] p-5 flex flex-col relative overflow-hidden group transition-colors ${myBookingsTab === 'history' ? 'opacity-80' : 'hover:border-duo-blue'}`}>
+                                                                <div className={`absolute top-0 left-0 w-2 h-full ${myBookingsTab === 'history' ? 'bg-gray-400' : 'bg-duo-blue'}`}></div>
+                                                                <div className="flex justify-between items-start pl-2 mb-3">
+                                                                    <div>
+                                                                        <h3 className="font-extrabold text-xl text-duo-text flex items-center">
+                                                                            {getIcon(cartData[b.cartName].type)}
+                                                                            <span className="ml-3">{b.cartName}</span>
+                                                                        </h3>
+                                                                    </div>
+                                                                    <span className="bg-blue-50 text-duo-blue text-xs px-2.5 py-1 rounded-lg font-extrabold uppercase tracking-wider border-2 border-blue-100">
+                                                                        {b.className}
+                                                                    </span>
+                                                                </div>
+
+
+                                                                <div className="pl-2 space-y-2 mb-6">
+                                                                    <div className="flex items-center text-sm font-bold text-gray-500">
+                                                                        <div className="w-6"><i className="fa-regular fa-calendar text-gray-400"></i></div>
+                                                                        <span className="bg-gray-100 px-2 py-0.5 rounded-md mr-2 text-duo-text">Wk {b.week}</span> 
+                                                                        {currentDays[b.dayIdx]} ({getDateForDayIdx(b.week, b.dayIdx)})
+                                                                    </div>
+                                                                    <div className="flex items-center text-sm font-bold text-gray-500">
+                                                                        <div className="w-6"><i className="fa-regular fa-clock text-gray-400"></i></div>
+                                                                        <span className="text-duo-text">{targetPeriod ? targetPeriod.name : `Period ${b.periodId}`}</span>
+                                                                        <span className="text-xs ml-2">({targetPeriod ? targetPeriod.time : ''})</span>
+                                                                    </div>
+                                                                </div>
+
+
+                                                                {myBookingsTab === 'upcoming' ? (
+                                                                    <button onClick={() => cancelBookingFromList(b.cartName, b.slotId, b.className)} className="mt-auto w-full bg-white text-duo-red font-extrabold uppercase py-3 rounded-xl border-2 border-duo-grayBorder shadow-[0_4px_0_0_#e5e5e5] hover:bg-red-50 hover:border-red-200 active:shadow-none active:translate-y-[4px] transition-all flex items-center justify-center">
+                                                                        <i className="fa-solid fa-trash-can mr-2"></i> Cancel
+                                                                    </button>
+                                                                ) : (
+                                                                    <div className="mt-auto w-full bg-gray-100 text-gray-400 font-extrabold uppercase py-3 rounded-xl border-2 border-transparent text-center flex items-center justify-center">
+                                                                        <i className="fa-solid fa-check-circle mr-2"></i> Completed
+                                                                    </div>
+                                                                )}
                                                             </div>
-                                                            <span className="bg-blue-50 text-duo-blue text-xs px-2.5 py-1 rounded-lg font-extrabold uppercase tracking-wider border-2 border-blue-100">
-                                                                {b.className}
-                                                            </span>
-                                                        </div>
-
-
-                                                        <div className="pl-2 space-y-2 mb-6">
-                                                            <div className="flex items-center text-sm font-bold text-gray-500">
-                                                                <div className="w-6"><i className="fa-regular fa-calendar text-gray-400"></i></div>
-                                                                <span className="bg-gray-100 px-2 py-0.5 rounded-md mr-2 text-duo-text">Wk {b.week}</span> 
-                                                                {currentDays[b.dayIdx]} ({getDateForDayIdx(b.week, b.dayIdx)})
-                                                            </div>
-                                                            <div className="flex items-center text-sm font-bold text-gray-500">
-                                                                <div className="w-6"><i className="fa-regular fa-clock text-gray-400"></i></div>
-                                                                <span className="text-duo-text">{targetPeriod ? targetPeriod.name : `Period ${b.periodId}`}</span>
-                                                                <span className="text-xs ml-2">({targetPeriod ? targetPeriod.time : ''})</span>
-                                                            </div>
-                                                        </div>
-
-
-                                                        <button onClick={() => cancelBookingFromList(b.cartName, b.slotId, b.className)} className="mt-auto w-full bg-white text-duo-red font-extrabold uppercase py-3 rounded-xl border-2 border-duo-grayBorder shadow-[0_4px_0_0_#e5e5e5] hover:bg-red-50 hover:border-red-200 active:shadow-none active:translate-y-[4px] transition-all flex items-center justify-center">
-                                                            <i className="fa-solid fa-trash-can mr-2"></i> Cancel
-                                                        </button>
-                                                    </div>
-                                                );
-                                            })}
+                                                        );
+                                                    })}
+                                                </div>
+                                            )}
                                         </div>
                                     ) : (
                                         <div className="bg-white rounded-[2rem] border-2 border-duo-grayBorder shadow-duo-card overflow-hidden">
@@ -1156,7 +1082,6 @@
                                                                     if (period.id === 'lunch') return <td key={dayIdx} className="p-2 align-middle"><div className="bg-gray-50 rounded-2xl h-[72px]"></div></td>;
                                                                     
                                                                     const slotId = `w${selectedWeek}_d${dayIdx}_p${period.id}`;
-                                                                    // 尋找這個時段我有借了哪些車 (可能同時借兩台給不同班級)
                                                                     const myCartsThisSlot = Object.entries(cartData).filter(([cName, cData]) => cData.schedule && cData.schedule[slotId]?.ownerEmail === currentUser.email);
                                                                     
                                                                     return (
@@ -1198,7 +1123,6 @@
                                     </div>
                                     <div className="flex flex-wrap items-center gap-3">
                                         
-                                        {/* 新增：搜尋框 */}
                                         <div className="relative">
                                             <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none">
                                                 <i className="fa-solid fa-search text-gray-400"></i>
@@ -1262,14 +1186,15 @@
                                         <i className="fa-solid fa-arrow-left mr-2"></i> Back
                                     </button>
                                     
-                                    {/* 批次預約開關 */}
-                                    <div className="flex items-center space-x-3 bg-white px-4 py-2 rounded-xl border-2 border-duo-grayBorder">
-                                        <span className="text-sm font-extrabold text-duo-text uppercase tracking-wider">Batch Mode</span>
-                                        <div className="relative cursor-pointer" onClick={() => { setIsBatchMode(!isBatchMode); setBatchSelection([]); }}>
-                                            <div className={`block w-12 h-6 rounded-full border-2 transition-colors ${isBatchMode ? 'bg-duo-blue border-duo-blueDark' : 'bg-gray-200 border-gray-300'}`}></div>
-                                            <div className={`absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform ${isBatchMode ? 'transform translate-x-6' : ''}`}></div>
+                                    {!isAdmin && (
+                                        <div className="flex items-center space-x-3 bg-white px-4 py-2 rounded-xl border-2 border-duo-grayBorder">
+                                            <span className="text-sm font-extrabold text-duo-text uppercase tracking-wider">Batch Mode</span>
+                                            <div className="relative cursor-pointer" onClick={() => { setIsBatchMode(!isBatchMode); setBatchSelection([]); }}>
+                                                <div className={`block w-12 h-6 rounded-full border-2 transition-colors ${isBatchMode ? 'bg-duo-blue border-duo-blueDark' : 'bg-gray-200 border-gray-300'}`}></div>
+                                                <div className={`absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform ${isBatchMode ? 'transform translate-x-6' : ''}`}></div>
+                                            </div>
                                         </div>
-                                    </div>
+                                    )}
                                 </div>
 
 
@@ -1287,7 +1212,6 @@
                                         <table className="w-full min-w-[700px] border-separate border-spacing-2">
                                             <thead>
                                                 <tr>
-                                                    {/* 手機版固定第一欄 */}
                                                     <th className="p-2 w-32 sm:w-40 text-center font-extrabold text-gray-400 uppercase tracking-wider text-sm border-b-2 border-duo-grayBorder pb-4 align-bottom sticky left-0 bg-white z-20 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
                                                         <div className="flex items-center justify-center h-full pb-1">Period</div>
                                                     </th>
@@ -1304,7 +1228,6 @@
                                             <tbody>
                                                 {periods.map((period, pIdx) => (
                                                     <tr key={period.id}>
-                                                        {/* 手機版固定第一欄 */}
                                                         <td className="p-2 align-middle sticky left-0 bg-white z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
                                                             <div className="flex flex-col items-center justify-center bg-duo-grayLight rounded-2xl h-[72px] border-2 border-duo-grayBorder">
                                                                 <span className="font-extrabold text-duo-text text-sm">{period.name}</span>
@@ -1332,7 +1255,7 @@
                                                             return (
                                                                 <td key={dayIdx} className="p-2 align-middle">
                                                                     {bookingInfo ? (
-                                                                        <div onClick={() => !isBatchMode && handleSlotClick(dayIdx, period.id, bookingInfo)}
+                                                                        <div onClick={() => (!isBatchMode && (isMyBooking || isAdmin)) && handleSlotClick(dayIdx, period.id, bookingInfo)}
                                                                             className={`w-full h-[72px] rounded-2xl flex flex-col items-center justify-center p-2 transition-all ${
                                                                                 isBatchMode ? 'bg-gray-100 text-gray-400 border-2 border-duo-grayBorder opacity-50 cursor-not-allowed' :
                                                                                 isMyBooking || isAdmin
@@ -1344,20 +1267,23 @@
                                                                             <span className="text-[11px] font-bold bg-black/10 px-2 py-0.5 rounded-full mt-1 truncate max-w-[90%]">{bookingInfo.className}</span>
                                                                         </div>
                                                                     ) : (
-                                                                        <div onClick={() => handleSlotClick(dayIdx, period.id, null)}
+                                                                        <div onClick={() => !isAdmin && handleSlotClick(dayIdx, period.id, null)}
                                                                             className={`w-full h-[72px] rounded-2xl flex flex-col items-center justify-center cursor-pointer transition-all group ${
+                                                                                isAdmin ? 'bg-transparent border-2 border-dashed border-gray-200 cursor-default' :
                                                                                 isSelectedBatch 
                                                                                 ? 'bg-duo-green/20 border-2 border-duo-green text-duo-greenDark shadow-[inset_0_0_0_2px_#58cc02]'
                                                                                 : 'bg-transparent border-2 border-dashed border-gray-300 text-gray-300 hover:bg-duo-green/10 hover:border-duo-green hover:text-duo-green'
                                                                             }`}
                                                                         >
-                                                                            {isSelectedBatch ? (
-                                                                                <i className="fa-solid fa-check text-2xl text-duo-green"></i>
-                                                                            ) : (
-                                                                                <>
-                                                                                    <i className="fa-solid fa-plus text-xl mb-1 opacity-0 group-hover:opacity-100 transition-opacity"></i>
-                                                                                    <span className="text-[10px] font-extrabold uppercase tracking-wider opacity-0 group-hover:opacity-100 transition-opacity">Book</span>
-                                                                                </>
+                                                                            {!isAdmin && (
+                                                                                isSelectedBatch ? (
+                                                                                    <i className="fa-solid fa-check text-2xl text-duo-green"></i>
+                                                                                ) : (
+                                                                                    <>
+                                                                                        <i className="fa-solid fa-plus text-xl mb-1 opacity-0 group-hover:opacity-100 transition-opacity"></i>
+                                                                                        <span className="text-[10px] font-extrabold uppercase tracking-wider opacity-0 group-hover:opacity-100 transition-opacity">Book</span>
+                                                                                    </>
+                                                                                )
                                                                             )}
                                                                         </div>
                                                                     )}
@@ -1374,7 +1300,6 @@
                         )}
 
 
-                        {/* 批次預約浮動按鈕 */}
                         {isBatchMode && batchSelection.length > 0 && (
                             <div className="fixed bottom-8 left-1/2 -translate-x-1/2 bg-gray-900/90 backdrop-blur-md px-6 py-4 rounded-full shadow-2xl flex items-center gap-6 z-50 animate-[bounceIn_0.3s_cubic-bezier(0.175,0.885,0.32,1.275)] border-2 border-gray-700">
                                 <span className="font-extrabold text-white"><span className="text-duo-green">{batchSelection.length}</span> Slots Selected</span>
@@ -1413,7 +1338,6 @@
                                                     {sortedAllCarts.map(([name, data], index) => (
                                                         <div key={name} className="border-2 border-duo-grayBorder rounded-2xl p-3 sm:p-4 flex items-center justify-between bg-white hover:border-duo-blue transition-colors">
                                                             <div className="flex items-center gap-3 sm:gap-4">
-                                                                {/* 手動排序箭頭區塊 */}
                                                                 <div className="flex flex-col gap-1 pr-3 border-r-2 border-duo-grayBorder shrink-0">
                                                                     <button onClick={() => moveCart(name, 'up')} disabled={index === 0} className="text-gray-300 hover:text-duo-blue disabled:opacity-20 disabled:hover:text-gray-300 transition-colors cursor-pointer"><i className="fa-solid fa-caret-up text-2xl leading-none"></i></button>
                                                                     <button onClick={() => moveCart(name, 'down')} disabled={index === sortedAllCarts.length - 1} className="text-gray-300 hover:text-duo-blue disabled:opacity-20 disabled:hover:text-gray-300 transition-colors cursor-pointer"><i className="fa-solid fa-caret-down text-2xl leading-none"></i></button>
@@ -1437,11 +1361,16 @@
 
                                         {adminTab === 'users' && (
                                             <div>
-                                                <h3 className="text-2xl font-extrabold text-duo-text mb-6 border-b-2 border-duo-grayBorder pb-4">Registered Teachers</h3>
+                                                <div className="flex flex-wrap justify-between items-center mb-6 border-b-2 border-duo-grayBorder pb-4 gap-4">
+                                                    <h3 className="text-2xl font-extrabold text-duo-text">Whitelist Teachers</h3>
+                                                    <button onClick={() => setAdminAddUserModal({ isOpen: true })} className="px-5 py-3 bg-duo-blue text-white font-extrabold uppercase tracking-wider text-sm rounded-2xl shadow-duo-blue active:shadow-none active:translate-y-[4px] transition-all">
+                                                        <i className="fa-solid fa-user-plus mr-2"></i> Add Teacher
+                                                    </button>
+                                                </div>
                                                 <div className="overflow-x-auto border-2 border-duo-grayBorder rounded-2xl">
                                                     <table className="w-full text-left">
                                                         <thead className="bg-duo-grayLight border-b-2 border-duo-grayBorder">
-                                                            <tr><th className="p-4 text-xs font-extrabold text-gray-400 uppercase tracking-wider">Name</th><th className="p-4 text-xs font-extrabold text-gray-400 uppercase tracking-wider">Email</th><th className="p-4 text-xs font-extrabold text-gray-400 uppercase tracking-wider">Class</th><th className="p-4 text-right text-xs font-extrabold text-gray-400 uppercase tracking-wider">Actions</th></tr>
+                                                            <tr><th className="p-4 text-xs font-extrabold text-gray-400 uppercase tracking-wider">Name</th><th className="p-4 text-xs font-extrabold text-gray-400 uppercase tracking-wider">Google Email</th><th className="p-4 text-xs font-extrabold text-gray-400 uppercase tracking-wider">Default Class</th><th className="p-4 text-right text-xs font-extrabold text-gray-400 uppercase tracking-wider">Actions</th></tr>
                                                         </thead>
                                                         <tbody className="divide-y-2 divide-duo-grayBorder">
                                                             {Object.values(usersDB).map((user) => (
@@ -1450,8 +1379,7 @@
                                                                     <td className="p-4 font-bold text-gray-500">{user.email}</td>
                                                                     <td className="p-4 font-bold text-gray-500">{user.defaultClass === 'Other (Specify)' ? user.customClass : user.defaultClass}</td>
                                                                     <td className="p-4 flex justify-end gap-2">
-                                                                        <button onClick={() => resetUserPassword(user.email)} className="px-3 py-2 bg-white border-2 border-duo-grayBorder text-duo-yellowDark rounded-xl shadow-duo-gray active:shadow-none active:translate-y-[4px] text-xs font-extrabold uppercase transition-all"><i className="fa-solid fa-key mr-1"></i> Pwd</button>
-                                                                        <button onClick={() => deleteUser(user.email)} className="px-3 py-2 bg-white border-2 border-duo-grayBorder text-duo-red rounded-xl shadow-duo-gray active:shadow-none active:translate-y-[4px] text-xs font-extrabold uppercase transition-all"><i className="fa-solid fa-trash mr-1"></i> Del</button>
+                                                                        <button onClick={() => deleteUser(user.email)} className="px-3 py-2 bg-white border-2 border-duo-grayBorder text-duo-red rounded-xl shadow-duo-gray active:shadow-none active:translate-y-[4px] text-xs font-extrabold uppercase transition-all"><i className="fa-solid fa-trash mr-1"></i> Remove</button>
                                                                     </td>
                                                                 </tr>
                                                             ))}
@@ -1464,7 +1392,7 @@
 
                                         {adminTab === 'logs' && (
                                             <div>
-                                                <h3 className="text-2xl font-extrabold text-duo-text mb-6 border-b-2 border-duo-grayBorder pb-4">Activity Logs</h3>
+                                                <h3 className="text-2xl font-extrabold text-duo-text mb-6 border-b-2 border-duo-grayBorder pb-4">Activity Logs (Recent 100)</h3>
                                                 <div className="overflow-x-auto max-h-[600px] overflow-y-auto border-2 border-duo-grayBorder rounded-2xl custom-scrollbar">
                                                     <table className="w-full text-left min-w-[700px]">
                                                         <thead className="bg-duo-grayLight border-b-2 border-duo-grayBorder sticky top-0 z-10">
@@ -1476,7 +1404,7 @@
                                                                     <td className="p-4 font-bold text-gray-400 text-sm whitespace-nowrap">{log.time}</td>
                                                                     <td className="p-4 font-extrabold text-duo-text">{log.operator}</td>
                                                                     <td className="p-4">
-                                                                        <span className={`px-3 py-1 rounded-xl text-xs font-extrabold uppercase tracking-wider border-2 ${log.action.includes('Cancel') || log.action.includes('Delete') || log.action.includes('Clear') ? 'bg-red-50 text-duo-red border-red-200' : log.action.includes('Registration') ? 'bg-blue-50 text-duo-blue border-blue-200' : 'bg-green-50 text-duo-green border-green-200'}`}>
+                                                                        <span className={`px-3 py-1 rounded-xl text-xs font-extrabold uppercase tracking-wider border-2 ${log.action.includes('Cancel') || log.action.includes('Delete') || log.action.includes('Clear') ? 'bg-red-50 text-duo-red border-red-200' : log.action.includes('Add User') ? 'bg-blue-50 text-duo-blue border-blue-200' : 'bg-green-50 text-duo-green border-green-200'}`}>
                                                                             {log.action}
                                                                         </span>
                                                                     </td>
@@ -1512,20 +1440,6 @@
                                                         <button onClick={handleClearSemesterData} className="w-full bg-duo-red text-white font-extrabold uppercase py-3 rounded-2xl shadow-duo-red active:shadow-none active:translate-y-[4px] transition-all tracking-wider">
                                                             <i className="fa-solid fa-bomb mr-2"></i> Clear Bookings
                                                         </button>
-                                                    </div>
-                                                </div>
-
-
-                                                <div className="flex-1">
-                                                    <h3 className="text-2xl font-extrabold text-duo-text mb-6 border-b-2 border-duo-grayBorder pb-4">Security</h3>
-                                                    <div className="bg-duo-grayLight border-2 border-duo-grayBorder rounded-[2rem] p-6">
-                                                        <h4 className="font-extrabold text-duo-text mb-4 text-lg">Admin Password</h4>
-                                                        <form onSubmit={handleAdminPwdChange} className="space-y-4">
-                                                            <div><label className="block text-xs font-extrabold text-gray-500 uppercase tracking-wider mb-2">Current</label><input required type="password" value={adminPwdForm.current} onChange={e => setAdminPwdForm({...adminPwdForm, current: e.target.value})} className="w-full px-4 py-3 bg-white border-2 border-duo-grayBorder rounded-xl focus:border-duo-blue outline-none font-bold text-duo-text" /></div>
-                                                            <div><label className="block text-xs font-extrabold text-gray-500 uppercase tracking-wider mb-2">New</label><input required type="password" value={adminPwdForm.new} onChange={e => setAdminPwdForm({...adminPwdForm, new: e.target.value})} className="w-full px-4 py-3 bg-white border-2 border-duo-grayBorder rounded-xl focus:border-duo-blue outline-none font-bold text-duo-text" /></div>
-                                                            <div><label className="block text-xs font-extrabold text-gray-500 uppercase tracking-wider mb-2">Confirm</label><input required type="password" value={adminPwdForm.confirm} onChange={e => setAdminPwdForm({...adminPwdForm, confirm: e.target.value})} className="w-full px-4 py-3 bg-white border-2 border-duo-grayBorder rounded-xl focus:border-duo-blue outline-none font-bold text-duo-text" /></div>
-                                                            <button type="submit" className="w-full mt-2 bg-duo-text text-white font-extrabold uppercase py-3 rounded-2xl shadow-[0_4px_0_0_#2b2b2b] hover:bg-black active:shadow-none active:translate-y-[4px] transition-all tracking-wider">Update</button>
-                                                        </form>
                                                     </div>
                                                 </div>
                                             </div>
@@ -1602,14 +1516,12 @@
                 <tbody>
     {periods.map(period => (
         <React.Fragment key={period.id}>
-            {/* 1. 渲染原本的課程列與午餐列 */}
             <tr>
                 <td>
                     <strong className="text-[13px]">{period.name}</strong><br/>
                     <span className="text-[10px] text-gray-600">{period.time}</span>
                 </td>
                 {currentDays.map((day, dayIdx) => {
-                    // 如果是午餐，維持原本的跨三欄顯示
                     if (period.id === 'lunch') {
                         return <td key={dayIdx} colSpan="3" className="print-lunch font-bold text-center">Not Avaliable for Lunch</td>;
                     }
@@ -1634,13 +1546,9 @@
             </tr>
 
 
-            {/* 2. 當遇到午餐時，在下方額外插入一列標題列 */}
             {period.id === 'lunch' && (
                 <tr>
-                    {/* 左側加入 Period 標題 */}
                     <th className="text-[11px] py-1 bg-[#fafafa]">Period</th>
-                    
-                    {/* 依照天數重新渲染一次 Teacher、Check-out、Return (首字母已大寫) */}
                     {currentDays.map(d => (
                         <React.Fragment key={d + "-sub-afternoon"}>
                             <th className="text-[11px] py-1 bg-[#fafafa]">Teacher</th>
@@ -1663,6 +1571,32 @@
     ))}
 </div>
                     {/* ================= Modals ================= */}
+                    
+                    {/* Admin Add User Modal */}
+                    {adminAddUserModal.isOpen && (
+                        <div className="fixed inset-0 bg-slate-900/60 flex items-center justify-center p-4 z-[70] backdrop-blur-sm no-print">
+                            <div className="bg-white rounded-[2rem] border-2 border-duo-grayBorder shadow-2xl w-full max-w-md overflow-hidden animate-[fadeIn_0.15s_ease-out]">
+                                <div className="p-6 border-b-2 border-duo-grayBorder flex justify-between items-center bg-duo-grayLight">
+                                    <h3 className="font-extrabold text-xl text-duo-text"><i className="fa-solid fa-user-plus text-duo-blue mr-2"></i>Add to Whitelist</h3>
+                                    <button onClick={() => setAdminAddUserModal({ isOpen: false })} className="w-8 h-8 flex items-center justify-center bg-white border-2 border-duo-grayBorder rounded-full text-gray-400 hover:text-duo-text transition-colors">
+                                        <i className="fa-solid fa-times"></i>
+                                    </button>
+                                </div>
+                                <form onSubmit={handleAdminAddUser} className="p-6 space-y-4">
+                                    <div><label className="block text-xs font-extrabold text-gray-400 uppercase tracking-wider mb-1">Full Name</label><input required type="text" value={addUserForm.name} onChange={e => setAddUserForm({...addUserForm, name: e.target.value})} className="w-full px-4 py-3 bg-white border-2 border-duo-grayBorder rounded-xl focus:border-duo-blue outline-none font-bold" /></div>
+                                    <div><label className="block text-xs font-extrabold text-gray-400 uppercase tracking-wider mb-1">Google Email</label><input required type="email" value={addUserForm.email} onChange={e => setAddUserForm({...addUserForm, email: e.target.value})} placeholder="Must be a valid Google Account" className="w-full px-4 py-3 bg-white border-2 border-duo-grayBorder rounded-xl focus:border-duo-blue outline-none font-bold" /></div>
+                                    <div><label className="block text-xs font-extrabold text-gray-400 uppercase tracking-wider mb-1">Default Class</label><select value={addUserForm.classType} onChange={e => setAddUserForm({...addUserForm, classType: e.target.value})} className="w-full px-4 py-3 bg-white border-2 border-duo-grayBorder rounded-xl focus:border-duo-blue outline-none font-bold">{classOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}</select></div>
+                                    {addUserForm.classType === 'Other (Specify)' && <input required type="text" value={addUserForm.customClass} onChange={e => setAddUserForm({...addUserForm, customClass: e.target.value})} placeholder="Specify" className="w-full px-4 py-3 bg-white border-2 border-duo-grayBorder rounded-xl focus:border-duo-blue outline-none font-bold" />}
+                                    <div className="flex gap-3 pt-4 border-t-2 border-duo-grayBorder mt-4">
+                                        <button type="button" onClick={() => setAdminAddUserModal({ isOpen: false })} className="flex-1 bg-white border-2 border-duo-grayBorder text-gray-400 font-extrabold uppercase py-3 rounded-2xl shadow-duo-gray active:shadow-none active:translate-y-[4px] transition-all">Cancel</button>
+                                        <button type="submit" className="flex-[2] bg-duo-blue text-white font-extrabold uppercase py-3 rounded-2xl shadow-duo-blue active:shadow-none active:translate-y-[4px] transition-all">Add Teacher</button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    )}
+
+
                     {/* Booking Modal */}
                     {bookingModal.isOpen && (
                         <div className="fixed inset-0 bg-slate-900/60 flex items-center justify-center p-4 z-50 backdrop-blur-sm no-print">
@@ -1671,7 +1605,7 @@
                                     <h3 className="font-extrabold text-xl text-duo-text">
                                         {bookingModal.existingBooking ? 'Booking Details' : (bookingModal.isBatch ? 'Batch Booking' : 'New Booking')}
                                     </h3>
-                                    <button onClick={() => setBookingModal({ isOpen: false, existingBooking: null, isBatch: false })} className="absolute right-4 top-4 w-8 h-8 flex items-center justify-center bg-white border-2 border-duo-grayBorder rounded-full text-gray-400 hover:text-duo-text transition-colors">
+                                    <button onClick={() => setBookingModal({ isOpen: false, existingBooking: null, isBatch: false, isPast: false })} className="absolute right-4 top-4 w-8 h-8 flex items-center justify-center bg-white border-2 border-duo-grayBorder rounded-full text-gray-400 hover:text-duo-text transition-colors">
                                         <i className="fa-solid fa-times"></i>
                                     </button>
                                 </div>
@@ -1707,10 +1641,17 @@
                                                 <div className="font-bold text-gray-400 bg-gray-100 inline-block px-3 py-1 rounded-lg text-sm mb-6">{bookingModal.existingBooking.className}</div>
                                                 
                                                 {(isAdmin || bookingModal.existingBooking.ownerEmail === currentUser.email) ? (
-                                                    <div className="flex gap-3">
-                                                        {isAdmin && <button onClick={handleEditClick} className="flex-1 bg-white border-2 border-duo-grayBorder text-duo-blue font-extrabold uppercase py-3 rounded-2xl shadow-duo-gray active:shadow-none active:translate-y-[4px] transition-all"><i className="fa-solid fa-pen"></i></button>}
-                                                        <button onClick={cancelBooking} className="flex-[2] bg-duo-red text-white font-extrabold uppercase py-3 rounded-2xl shadow-[0_4px_0_0_#ea2b2b] active:shadow-none active:translate-y-[4px] transition-all">Remove</button>
-                                                    </div>
+                                                    bookingModal.isPast && !isAdmin ? (
+                                                        <div className="p-4 bg-gray-100 border-2 border-gray-200 rounded-2xl text-sm text-gray-500 font-bold flex flex-col items-center">
+                                                            <i className="fa-solid fa-clock-rotate-left text-2xl text-gray-400 mb-2"></i>
+                                                            This booking is in the past.
+                                                        </div>
+                                                    ) : (
+                                                        <div className="flex gap-3">
+                                                            {isAdmin && <button onClick={handleEditClick} className="flex-1 bg-white border-2 border-duo-grayBorder text-duo-blue font-extrabold uppercase py-3 rounded-2xl shadow-duo-gray active:shadow-none active:translate-y-[4px] transition-all"><i className="fa-solid fa-pen"></i></button>}
+                                                            <button onClick={cancelBooking} className="flex-[2] bg-duo-red text-white font-extrabold uppercase py-3 rounded-2xl shadow-[0_4px_0_0_#ea2b2b] active:shadow-none active:translate-y-[4px] transition-all">Remove</button>
+                                                        </div>
+                                                    )
                                                 ) : (
                                                     <div className="p-4 bg-duo-grayLight border-2 border-duo-grayBorder rounded-2xl text-sm text-gray-500 font-bold flex flex-col items-center">
                                                         <i className="fa-solid fa-lock text-2xl text-gray-400 mb-2"></i>
@@ -1787,39 +1728,6 @@
                                     <button onClick={() => setConfirmModal({ isOpen: false, message: '', onConfirm: null })} className="flex-1 bg-white border-2 border-duo-grayBorder text-gray-400 font-extrabold uppercase py-4 rounded-2xl shadow-duo-gray active:shadow-none active:translate-y-[4px] transition-all tracking-wider text-sm">Cancel</button>
                                     <button onClick={() => { confirmModal.onConfirm(); setConfirmModal({ isOpen: false, message: '', onConfirm: null }); }} className="flex-1 bg-duo-red text-white font-extrabold uppercase py-4 rounded-2xl shadow-duo-red active:shadow-none active:translate-y-[4px] transition-all tracking-wider text-sm">Confirm</button>
                                 </div>
-                            </div>
-                        </div>
-                    )}
-
-
-                    {/* User Change Password Modal */}
-                    {userPwdModal.isOpen && (
-                        <div className="fixed inset-0 bg-slate-900/60 flex items-center justify-center p-4 z-[70] backdrop-blur-sm no-print">
-                            <div className="bg-white rounded-[2rem] border-2 border-duo-grayBorder shadow-2xl w-full max-w-sm overflow-hidden animate-[fadeIn_0.15s_ease-out]">
-                                <div className="p-6 border-b-2 border-duo-grayBorder flex justify-between items-center bg-duo-grayLight">
-                                    <h3 className="font-extrabold text-xl text-duo-text"><i className="fa-solid fa-key text-duo-yellow mr-2"></i>Change Password</h3>
-                                    <button onClick={() => setUserPwdModal({ isOpen: false, current: '', new: '', confirm: '' })} className="w-8 h-8 flex items-center justify-center bg-white border-2 border-duo-grayBorder rounded-full text-gray-400 hover:text-duo-text transition-colors">
-                                        <i className="fa-solid fa-times"></i>
-                                    </button>
-                                </div>
-                                <form onSubmit={handleUserPwdChange} className="p-6 space-y-4">
-                                    <div>
-                                        <label className="block text-xs font-extrabold text-gray-400 uppercase tracking-wider mb-1">Current Password</label>
-                                        <input required type="password" value={userPwdModal.current} onChange={e => setUserPwdModal({...userPwdModal, current: e.target.value})} className="w-full px-4 py-3 bg-white border-2 border-duo-grayBorder rounded-xl focus:border-duo-blue outline-none font-bold" />
-                                    </div>
-                                    <div>
-                                        <label className="block text-xs font-extrabold text-gray-400 uppercase tracking-wider mb-1">New Password</label>
-                                        <input required type="password" minLength="6" value={userPwdModal.new} onChange={e => setUserPwdModal({...userPwdModal, new: e.target.value})} placeholder="Min 6 chars" className="w-full px-4 py-3 bg-white border-2 border-duo-grayBorder rounded-xl focus:border-duo-blue outline-none font-bold" />
-                                    </div>
-                                    <div>
-                                        <label className="block text-xs font-extrabold text-gray-400 uppercase tracking-wider mb-1">Confirm Password</label>
-                                        <input required type="password" minLength="6" value={userPwdModal.confirm} onChange={e => setUserPwdModal({...userPwdModal, confirm: e.target.value})} className="w-full px-4 py-3 bg-white border-2 border-duo-grayBorder rounded-xl focus:border-duo-blue outline-none font-bold" />
-                                    </div>
-                                    <div className="flex gap-3 pt-4 border-t-2 border-duo-grayBorder mt-4">
-                                        <button type="button" onClick={() => setUserPwdModal({ isOpen: false, current: '', new: '', confirm: '' })} className="flex-1 bg-white border-2 border-duo-grayBorder text-gray-400 font-extrabold uppercase py-3 rounded-2xl shadow-duo-gray active:shadow-none active:translate-y-[4px] transition-all">Cancel</button>
-                                        <button type="submit" className="flex-[2] bg-duo-yellow text-white font-extrabold uppercase py-3 rounded-2xl shadow-[0_4px_0_0_#e5b400] hover:bg-[#e5b400] active:shadow-none active:translate-y-[4px] transition-all">Save</button>
-                                    </div>
-                                </form>
                             </div>
                         </div>
                     )}
