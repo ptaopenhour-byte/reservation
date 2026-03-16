@@ -67,7 +67,7 @@
     <div id="root"></div>
 
 
-    <!-- Firebase 模組載入 (新增 GoogleAuthProvider, signInWithPopup, signOut, getDoc) -->
+    <!-- Firebase 模組載入 -->
     <script type="module">
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js';
         import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken, GoogleAuthProvider, signInWithPopup, signOut } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js';
@@ -119,7 +119,7 @@
 
 
         const baseDays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
-        const classOptions = Array.from({ length: 12 }, (_, i) => [`${i + 1}A`, `${i + 1}B`]).flat();
+        const classOptions = Array.from({ length: 12 }, (_, i) => `${i + 1}A`).concat(Array.from({ length: 12 }, (_, i) => `${i + 1}B`)).sort();
         classOptions.push("Other (Specify)");
 
 
@@ -158,14 +158,13 @@
 
 
             const [cartData, setCartData] = useState({});
-            const [usersDB, setUsersDB] = useState({}); // 只有管理員才會拉取
+            const [usersDB, setUsersDB] = useState({}); 
             const [activityLogs, setActivityLogs] = useState([]); 
             
             const [currentUser, setCurrentUser] = useState(null);
             const [isAdmin, setIsAdmin] = useState(false);
             
-            // 簡化後的 Auth 狀態
-            const [authMode, setAuthMode] = useState('auth'); // 'auth' | 'complete_profile'
+            const [authMode, setAuthMode] = useState('auth');
             const [regForm, setRegForm] = useState({ name: '', email: '', classType: '1A', customClass: '' });
 
 
@@ -181,6 +180,7 @@
 
 
             const [myBookingsView, setMyBookingsView] = useState('list');
+            const [myBookingsTab, setMyBookingsTab] = useState('upcoming'); // 新增: 切換 upcoming / history
 
 
             const changeView = (newView) => {
@@ -242,7 +242,6 @@
                     }
 
 
-                    // 全局共用的資料載入 (不包含 Users)
                     fb.onAuthStateChanged(auth, (user) => {
                         if (!user) return;
                         
@@ -283,7 +282,6 @@
             }, []);
 
 
-            // 只有管理員才拉取 Users 與 Logs，減少頻寬與資安風險
             useEffect(() => {
                 if (!firebaseReady || !dbRefs || !isAdmin) return;
 
@@ -339,12 +337,9 @@
             }, [selectedWeek, semesterConfig.totalWeeks]);
 
 
-            // =============== Google 登入核心邏輯 ===============
             const handleGoogleLogin = async () => {
                 const auth = dbRefs.auth;
                 const provider = new dbRefs.fb.GoogleAuthProvider();
-                
-                // 強制每次登入都選擇帳號，不讓瀏覽器自動記錄跳過
                 provider.setCustomParameters({ prompt: 'select_account' });
 
 
@@ -354,23 +349,19 @@
                     const userEmail = googleUser.email;
 
 
-                    // 檢查是否為舊用戶
                     const userDocRef = dbRefs.getDocRef('users', userEmail);
                     const userDoc = await dbRefs.fb.getDoc(userDocRef);
 
 
                     if (userDoc.exists()) {
-                        // 舊用戶：無縫接軌
                         const userData = userDoc.data();
                         setCurrentUser(userData);
                         
-                        // 判斷是否為管理員 (資料庫標記 或 指定信箱作為後門)
                         const isUserAdmin = userData.isAdmin === true || userEmail.toLowerCase() === 'ptaopenhour@ibsh.tw';
                         setIsAdmin(isUserAdmin);
                         
                         goHome();
                     } else {
-                        // 新用戶：前往補全資料
                         setRegForm({
                             name: googleUser.displayName || '',
                             email: userEmail,
@@ -397,7 +388,7 @@
                     email: regForm.email.trim(),
                     defaultClass: regForm.classType,
                     customClass: regForm.customClass,
-                    isAdmin: regForm.email.toLowerCase() === 'ptaopenhour@ibsh.tw' // 指定管理員帳號
+                    isAdmin: regForm.email.toLowerCase() === 'ptaopenhour@ibsh.tw'
                 };
                 
                 await dbRefs.fb.setDoc(dbRefs.getDocRef('users', newUser.email), newUser);
@@ -410,11 +401,9 @@
 
             const handleLogout = () => {
                 dbRefs.fb.signOut(dbRefs.auth).then(() => {
-                    // 登出後直接重新整理網頁，確保所有狀態徹底清空
                     window.location.reload();
                 });
             };
-            // ===================================================
 
 
             const sortedAllCarts = Object.entries(cartData).sort((a, b) => (a[1].order || 0) - (b[1].order || 0));
@@ -533,7 +522,7 @@
 
                 const isPastLimit = !isAdmin && (selectedWeek > currentRealWeek + (semesterConfig.maxAdvanceWeeks || 2));
                 if (isPastLimit) {
-                    showAlert(`⚠️ Booking Limit Exceeded\n\nTo ensure fairness, the system only allows bookings up to ${semesterConfig.maxAdvanceWeeks || 2} week(s) in advance.\nPlease try again closer to your desired date!`);
+                    showAlert(`⚠️ Booking Limit Exceeded\n\nBooking more than ${semesterConfig.maxAdvanceWeeks || 2} weeks in advance is not allowed.\n\nPlease select a date closer to your current week.`);
                     return;
                 }
 
@@ -933,44 +922,61 @@
                     <main className="max-w-7xl mx-auto px-4 py-8 no-print">
                         
                         {/* --- View: My Bookings --- */}
-                        {currentView === 'my-bookings' && (
-                            <div className="animate-[fadeIn_0.3s_ease-out]">
-                                <div className="mb-6 flex items-center justify-between">
-                                    <button onClick={goBack} className="text-gray-400 font-extrabold uppercase tracking-wider hover:text-duo-text transition-colors flex items-center border-2 border-duo-grayBorder px-4 py-2 rounded-xl bg-white hover:bg-gray-50">
-                                        <i className="fa-solid fa-arrow-left mr-2"></i> Back
-                                    </button>
-                                </div>
-                                <div className="mb-8 border-b-2 border-duo-grayBorder pb-6 flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
-                                    <div>
-                                        <h2 className="text-3xl font-extrabold text-duo-text tracking-tight">My Bookings</h2>
-                                        <p className="text-gray-500 font-bold mt-2">Manage all your reserved equipment slots here.</p>
-                                    </div>
-                                    <div className="flex bg-duo-grayLight rounded-xl border-2 border-duo-grayBorder p-1">
-                                        <button onClick={() => setMyBookingsView('list')} className={`px-4 py-2 rounded-lg font-extrabold text-sm transition-all ${myBookingsView === 'list' ? 'bg-white shadow-sm text-duo-text' : 'text-gray-400 hover:text-duo-text'}`}><i className="fa-solid fa-list mr-2"></i>List View</button>
-                                        <button onClick={() => setMyBookingsView('calendar')} className={`px-4 py-2 rounded-lg font-extrabold text-sm transition-all ${myBookingsView === 'calendar' ? 'bg-white shadow-sm text-duo-text' : 'text-gray-400 hover:text-duo-text'}`}><i className="fa-solid fa-calendar-day mr-2"></i>Calendar</button>
-                                    </div>
-                                </div>
+                        {currentView === 'my-bookings' && (() => {
+                            const allBookings = getMyBookings();
+                            // 以當前週數(currentRealWeek)為界線，分出未來與歷史預約
+                            const upcomingBookings = allBookings.filter(b => b.week >= currentRealWeek);
+                            const historyBookings = allBookings.filter(b => b.week < currentRealWeek);
+                            const displayBookings = myBookingsTab === 'upcoming' ? upcomingBookings : historyBookings;
 
 
-                                {getMyBookings().length === 0 ? (
-                                    <div className="bg-white rounded-3xl border-2 border-duo-grayBorder shadow-duo-card p-12 text-center flex flex-col items-center">
-                                        <div className="w-24 h-24 bg-gray-100 rounded-full flex items-center justify-center mb-6 border-4 border-white shadow-sm">
-                                            <i className="fa-regular fa-face-frown-open text-5xl text-gray-300"></i>
-                                        </div>
-                                        <h3 className="text-2xl font-extrabold text-duo-text mb-2">No Bookings Yet</h3>
-                                        <p className="text-gray-500 font-bold mb-8">You haven't reserved any equipment for your classes.</p>
-                                        <button onClick={goHome} className="px-8 py-4 bg-duo-green text-white font-extrabold uppercase tracking-wider rounded-2xl shadow-duo-green hover:bg-[#46a302] active:shadow-none active:translate-y-[4px] transition-all">
-                                            <i className="fa-solid fa-magnifying-glass mr-2"></i> Find Equipment
+                            return (
+                                <div className="animate-[fadeIn_0.3s_ease-out]">
+                                    <div className="mb-6 flex items-center justify-between">
+                                        <button onClick={goBack} className="text-gray-400 font-extrabold uppercase tracking-wider hover:text-duo-text transition-colors flex items-center border-2 border-duo-grayBorder px-4 py-2 rounded-xl bg-white hover:bg-gray-50">
+                                            <i className="fa-solid fa-arrow-left mr-2"></i> Back
                                         </button>
                                     </div>
-                                ) : (
-                                    myBookingsView === 'list' ? (
+                                    
+                                    <div className="mb-8 border-b-2 border-duo-grayBorder pb-6 flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
+                                        <div>
+                                            <h2 className="text-3xl font-extrabold text-duo-text tracking-tight">My Bookings</h2>
+                                            <p className="text-gray-500 font-bold mt-2">Manage your upcoming reservations and view past history.</p>
+                                        </div>
+                                    </div>
+
+
+                                    {/* 新增的 Upcoming / History 切換按鈕 */}
+                                    <div className="flex gap-4 mb-8 border-b-2 border-duo-grayBorder pb-6 overflow-x-auto hide-scrollbar">
+                                        <button onClick={() => setMyBookingsTab('upcoming')} className={`px-8 py-3 font-extrabold uppercase tracking-wider rounded-2xl transition-all whitespace-nowrap ${myBookingsTab === 'upcoming' ? 'bg-duo-blue text-white shadow-[0_4px_0_0_#1899d6]' : 'bg-white text-gray-400 border-2 border-duo-grayBorder hover:bg-gray-50'}`}>
+                                            Upcoming ({upcomingBookings.length})
+                                        </button>
+                                        <button onClick={() => setMyBookingsTab('history')} className={`px-8 py-3 font-extrabold uppercase tracking-wider rounded-2xl transition-all whitespace-nowrap ${myBookingsTab === 'history' ? 'bg-duo-text text-white shadow-[0_4px_0_0_#2b2b2b]' : 'bg-white text-gray-400 border-2 border-duo-grayBorder hover:bg-gray-50'}`}>
+                                            History ({historyBookings.length})
+                                        </button>
+                                    </div>
+
+
+                                    {displayBookings.length === 0 ? (
+                                        <div className="bg-white rounded-3xl border-2 border-duo-grayBorder shadow-duo-card p-12 text-center flex flex-col items-center">
+                                            <div className="w-24 h-24 bg-gray-100 rounded-full flex items-center justify-center mb-6 border-4 border-white shadow-sm">
+                                                <i className="fa-regular fa-folder-open text-5xl text-gray-300"></i>
+                                            </div>
+                                            <h3 className="text-2xl font-extrabold text-duo-text mb-2">No {myBookingsTab} bookings</h3>
+                                            <p className="text-gray-500 font-bold mb-8">You don't have any {myBookingsTab} reservations right now.</p>
+                                            {myBookingsTab === 'upcoming' && (
+                                                <button onClick={goHome} className="px-8 py-4 bg-duo-green text-white font-extrabold uppercase tracking-wider rounded-2xl shadow-duo-green hover:bg-[#46a302] active:shadow-none active:translate-y-[4px] transition-all">
+                                                    <i className="fa-solid fa-magnifying-glass mr-2"></i> Find Equipment
+                                                </button>
+                                            )}
+                                        </div>
+                                    ) : (
                                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-                                            {getMyBookings().map((b, idx) => {
+                                            {displayBookings.map((b, idx) => {
                                                 const targetPeriod = periods.find(p => p.id == b.periodId);
                                                 return (
-                                                    <div key={idx} className="bg-white rounded-3xl border-2 border-duo-grayBorder shadow-[0_6px_0_0_#e5e5e5] p-5 flex flex-col relative overflow-hidden group hover:border-duo-blue transition-colors">
-                                                        <div className="absolute top-0 left-0 w-2 h-full bg-duo-blue"></div>
+                                                    <div key={idx} className={`bg-white rounded-3xl border-2 border-duo-grayBorder p-5 flex flex-col relative overflow-hidden group hover:border-duo-blue transition-colors ${myBookingsTab === 'history' ? 'opacity-70' : 'shadow-[0_6px_0_0_#e5e5e5]'}`}>
+                                                        <div className={`absolute top-0 left-0 w-2 h-full ${myBookingsTab === 'history' ? 'bg-gray-400' : 'bg-duo-blue'}`}></div>
                                                         <div className="flex justify-between items-start pl-2 mb-3">
                                                             <div>
                                                                 <h3 className="font-extrabold text-xl text-duo-text flex items-center">
@@ -998,73 +1004,20 @@
                                                         </div>
 
 
-                                                        <button onClick={() => cancelBookingFromList(b.cartName, b.slotId, b.className)} className="mt-auto w-full bg-white text-duo-red font-extrabold uppercase py-3 rounded-xl border-2 border-duo-grayBorder shadow-[0_4px_0_0_#e5e5e5] hover:bg-red-50 hover:border-red-200 active:shadow-none active:translate-y-[4px] transition-all flex items-center justify-center">
-                                                            <i className="fa-solid fa-trash-can mr-2"></i> Cancel
-                                                        </button>
+                                                        {/* 歷史紀錄不顯示取消按鈕 */}
+                                                        {myBookingsTab === 'upcoming' && (
+                                                            <button onClick={() => cancelBookingFromList(b.cartName, b.slotId, b.className)} className="mt-auto w-full bg-white text-duo-red font-extrabold uppercase py-3 rounded-xl border-2 border-duo-grayBorder shadow-[0_4px_0_0_#e5e5e5] hover:bg-red-50 hover:border-red-200 active:shadow-none active:translate-y-[4px] transition-all flex items-center justify-center">
+                                                                <i className="fa-solid fa-trash-can mr-2"></i> Cancel
+                                                            </button>
+                                                        )}
                                                     </div>
                                                 );
                                             })}
                                         </div>
-                                    ) : (
-                                        <div className="bg-white rounded-[2rem] border-2 border-duo-grayBorder shadow-duo-card overflow-hidden">
-                                            <div className="overflow-x-auto p-4 custom-scrollbar">
-                                                <div className="mb-4 text-center font-extrabold text-duo-text text-xl">Week {selectedWeek} Schedule</div>
-                                                <table className="w-full min-w-[700px] border-separate border-spacing-2">
-                                                    <thead>
-                                                        <tr>
-                                                            <th className="p-2 w-32 text-center font-extrabold text-gray-400 uppercase text-sm border-b-2 border-duo-grayBorder sticky left-0 bg-white z-20">Period</th>
-                                                            {currentDays.map((d, dayIdx) => (
-                                                                <th key={d} className="p-2 text-center font-extrabold text-duo-text uppercase text-sm border-b-2 border-duo-grayBorder">
-                                                                    <div className="flex flex-col items-center">
-                                                                        <span>{d}</span>
-                                                                        <span className="text-[11px] text-gray-400 mt-1 font-bold">{getDateForDayIdx(selectedWeek, dayIdx)}</span>
-                                                                    </div>
-                                                                </th>
-                                                            ))}
-                                                        </tr>
-                                                    </thead>
-                                                    <tbody>
-                                                        {periods.map((period) => (
-                                                            <tr key={period.id}>
-                                                                <td className="p-2 align-middle sticky left-0 bg-white z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
-                                                                    <div className="flex flex-col items-center justify-center bg-duo-grayLight rounded-2xl h-[72px] border-2 border-duo-grayBorder">
-                                                                        <span className="font-extrabold text-duo-text text-sm">{period.name}</span>
-                                                                    </div>
-                                                                </td>
-                                                                {currentDays.map((day, dayIdx) => {
-                                                                    if (period.id === 'lunch') return <td key={dayIdx} className="p-2 align-middle"><div className="bg-gray-50 rounded-2xl h-[72px]"></div></td>;
-                                                                    
-                                                                    const slotId = `w${selectedWeek}_d${dayIdx}_p${period.id}`;
-                                                                    const myCartsThisSlot = Object.entries(cartData).filter(([cName, cData]) => cData.schedule && cData.schedule[slotId]?.ownerEmail === currentUser.email);
-                                                                    
-                                                                    return (
-                                                                        <td key={dayIdx} className="p-2 align-middle text-center relative">
-                                                                            {myCartsThisSlot.length > 0 ? (
-                                                                                <div className="flex flex-col gap-1">
-                                                                                    {myCartsThisSlot.map(([cName, cData]) => (
-                                                                                        <div key={cName} className="bg-duo-blue text-white rounded-xl p-2 shadow-[0_3px_0_0_#1899d6] flex flex-col justify-center items-center cursor-pointer hover:bg-[#1899d6] active:translate-y-[3px] active:shadow-none" onClick={() => cancelBookingFromList(cName, slotId, cData.schedule[slotId].className)}>
-                                                                                            <span className="font-extrabold text-xs truncate w-full">{cName}</span>
-                                                                                            <span className="text-[10px] bg-black/20 px-1.5 rounded-md truncate">{cData.schedule[slotId].className}</span>
-                                                                                        </div>
-                                                                                    ))}
-                                                                                </div>
-                                                                            ) : (
-                                                                                <div className="w-full h-[72px] bg-gray-50 border-2 border-dashed border-gray-200 rounded-2xl flex items-center justify-center">
-                                                                                </div>
-                                                                            )}
-                                                                        </td>
-                                                                    );
-                                                                })}
-                                                            </tr>
-                                                        ))}
-                                                    </tbody>
-                                                </table>
-                                            </div>
-                                        </div>
-                                    )
-                                )}
-                            </div>
-                        )}
+                                    )}
+                                </div>
+                            );
+                        })()}
 
 
                         {/* --- View: Home --- */}
@@ -1397,8 +1350,6 @@
                                                             <button type="submit" className="w-full mt-2 bg-duo-green text-white font-extrabold uppercase py-3 rounded-2xl shadow-duo-green active:shadow-none active:translate-y-[4px] transition-all tracking-wider">Save Config</button>
                                                         </form>
                                                     </div>
-
-
                                                     <h3 className="text-2xl font-extrabold text-duo-red mb-6 border-b-2 border-duo-grayBorder pb-4"><i className="fa-solid fa-skull mr-2"></i> Danger Zone</h3>
                                                     <div className="bg-red-50 border-2 border-red-200 rounded-[2rem] p-6">
                                                         <p className="text-sm font-bold text-duo-red mb-4">Click below to wipe all booking records in the system. Use at the start of a new semester. Cannot be undone!</p>
