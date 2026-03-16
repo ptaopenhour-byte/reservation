@@ -180,7 +180,7 @@
 
 
             const [myBookingsView, setMyBookingsView] = useState('list');
-            const [myBookingsTab, setMyBookingsTab] = useState('upcoming'); // 新增: 切換 upcoming / history
+            const [myBookingsTab, setMyBookingsTab] = useState('upcoming');
 
 
             const changeView = (newView) => {
@@ -1481,6 +1481,20 @@
 
 
                     {/* ================= Modals ================= */}
+                    {/* 我們將 Alert 彈出視窗加進主要的 Render 中 */}
+                    {alertModal.isOpen && (
+                        <div className="fixed inset-0 bg-slate-900/60 flex items-center justify-center p-4 z-[70] backdrop-blur-sm no-print">
+                            <div className="bg-white rounded-[2rem] border-2 border-duo-grayBorder shadow-2xl max-w-sm w-full p-8 text-center animate-[bounceIn_0.3s_cubic-bezier(0.175,0.885,0.32,1.275)]">
+                                <div className="w-20 h-20 bg-blue-50 text-duo-blue rounded-full flex items-center justify-center mx-auto mb-4 border-4 border-white shadow-sm">
+                                    <i className="fa-solid fa-bell text-4xl"></i>
+                                </div>
+                                <p className="text-duo-text font-bold mb-8 whitespace-pre-line text-lg leading-relaxed">{alertModal.message}</p>
+                                <button onClick={() => setAlertModal({ isOpen: false, message: '' })} className="w-full bg-duo-blue text-white font-extrabold uppercase py-4 rounded-2xl shadow-duo-blue active:shadow-none active:translate-y-[4px] transition-all tracking-wider text-lg">Got it!</button>
+                            </div>
+                        </div>
+                    )}
+
+
                     {bookingModal.isOpen && (
                         <div className="fixed inset-0 bg-slate-900/60 flex items-center justify-center p-4 z-50 backdrop-blur-sm no-print">
                             <div className="bg-white rounded-[2rem] border-2 border-duo-grayBorder shadow-2xl w-full max-w-sm overflow-hidden animate-[fadeIn_0.15s_ease-out]">
