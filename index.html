@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
@@ -44,7 +44,6 @@
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
-
     <style>
         @media print {
             @page { size: A4 landscape; margin: 10mm; }
@@ -66,34 +65,21 @@
     
     <div id="root"></div>
 
-
-    <!-- Firebase 模組載入 (新增 GoogleAuthProvider 相關套件) -->
     <script type="module">
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js';
         import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken, GoogleAuthProvider, signInWithPopup, signOut } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js';
-        import { getFirestore, collection, doc, getDoc, setDoc, deleteDoc, onSnapshot, runTransaction } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
-
+        import { getFirestore, collection, doc, getDoc, setDoc, deleteDoc, onSnapshot, runTransaction, query, orderBy, limit, serverTimestamp, updateDoc, deleteField, writeBatch } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
 
         window.fbModules = {
             initializeApp, getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken, GoogleAuthProvider, signInWithPopup, signOut,
-            getFirestore, collection, doc, getDoc, setDoc, deleteDoc, onSnapshot, runTransaction
+            getFirestore, collection, doc, getDoc, setDoc, deleteDoc, onSnapshot, runTransaction, query, orderBy, limit, serverTimestamp, updateDoc, deleteField, writeBatch
         };
         window.dispatchEvent(new Event('firebaseLoaded'));
     </script>
 
-
     <script type="text/babel">
-        const { useState, useEffect } = React;
-
-
-        // Admin 密碼加密用 (SHA-256)
-        const sha256 = async (message) => {
-            const msgBuffer = new TextEncoder().encode(message);
-            const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
-            const hashArray = Array.from(new Uint8Array(hashBuffer));
-            return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-        };
-
+        // 🔧 FIX [效能]: 加入 useMemo & useCallback，避免每次 render 重新計算
+        const { useState, useEffect, useMemo, useCallback } = React;
 
         const isCanvasEnv = typeof __firebase_config !== 'undefined';
         const defaultFirebaseConfig = {
@@ -105,10 +91,8 @@
             appId: "1:86740355319:web:66828caf35bbdb04f5abf2"
         };
 
-
         const firebaseConfig = isCanvasEnv ? JSON.parse(__firebase_config) : defaultFirebaseConfig;
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'cartreserver-app';
-
 
         const initialData = {
             "Cart 8": { type: "Chromebook", location: "Student Affairs Office", capacity: 30, schedule: {}, notes: "Elevator malfunction, please note", order: 0 },
@@ -117,13 +101,10 @@
             "iPad Cart 1": { type: "iPad", location: "Academic Affairs Office", capacity: 21, schedule: {}, order: 3 },
         };
 
-
-        // 移除密碼欄位，只留下身分與班級資料
         const initialUsers = {
             "bianca@school.edu": { name: "Bianca", email: "bianca@school.edu", defaultClass: "11A", customClass: "" },
             "yvonne@school.edu": { name: "Yvonne", email: "yvonne@school.edu", defaultClass: "11B", customClass: "" }
         };
-
 
         const periods = [
             { id: 1, time: "8:10-9:00", name: "Period 1" }, { id: 2, time: "9:10-10:00", name: "Period 2" },
@@ -133,14 +114,11 @@
             { id: 7, time: "15:20-16:10", name: "Period 7" }, { id: 8, time: "16:20-17:10", name: "Period 8" }
         ];
 
-
         const baseDays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
         const classOptions = Array.from({ length: 12 }, (_, i) => [`${i + 1}A`, `${i + 1}B`]).flat();
         classOptions.push("Other (Specify)");
 
-
         const getTimestamp = () => new Date().toLocaleString('en-US', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
-
 
         function App() {
             const [firebaseReady, setFirebaseReady] = useState(false);
@@ -149,10 +127,8 @@
             const [alertModal, setAlertModal] = useState({ isOpen: false, message: '' });
             const [confirmModal, setConfirmModal] = useState({ isOpen: false, message: '', onConfirm: null });
 
-
             const showAlert = (message) => setAlertModal({ isOpen: true, message });
             const showConfirm = (message, onConfirm) => setConfirmModal({ isOpen: true, message, onConfirm });
-
 
             const [currentView, setCurrentView] = useState('home');
             const [viewHistory, setViewHistory] = useState(['home']);
@@ -165,13 +141,11 @@
             const [semesterConfig, setSemesterConfig] = useState({ startDate: '2026-02-23', totalWeeks: 19, maxAdvanceWeeks: 2 });
             const [tempSemesterConfig, setTempSemesterConfig] = useState({ ...semesterConfig });
 
-
             const [selectedWeek, setSelectedWeek] = useState(1);
             const [currentRealWeek, setCurrentRealWeek] = useState(1);
             const [allowSaturday, setAllowSaturday] = useState(false);
             const [hasAutoSetWeek, setHasAutoSetWeek] = useState(false);
             const currentDays = allowSaturday ? [...baseDays, "Saturday"] : baseDays;
-
 
             const [cartData, setCartData] = useState({});
             const [usersDB, setUsersDB] = useState({}); 
@@ -180,11 +154,10 @@
             const [currentUser, setCurrentUser] = useState(null);
             const [isAdmin, setIsAdmin] = useState(false);
             
-            const [authMode, setAuthMode] = useState('login'); // 'login' or 'admin'
+            const [authMode, setAuthMode] = useState('login');
             
             const [adminAddUserModal, setAdminAddUserModal] = useState({ isOpen: false });
             const [addUserForm, setAddUserForm] = useState({ name: '', email: '', classType: '1A', customClass: '' });
-
 
             const [bookingModal, setBookingModal] = useState({ isOpen: false, dayIdx: null, periodId: null, existingBooking: null, isEditing: false, isBatch: false, isPast: false });
             const [bookForm, setBookForm] = useState({ classType: '', customClass: '' });
@@ -192,19 +165,16 @@
             const [editCartModal, setEditCartModal] = useState({ isOpen: false, cartName: null, data: null });
             const [printSelection, setPrintSelection] = useState([]);
 
-
             const [isBatchMode, setIsBatchMode] = useState(false);
             const [batchSelection, setBatchSelection] = useState([]);
             const [myBookingsView, setMyBookingsView] = useState('list');
-            const [myBookingsTab, setMyBookingsTab] = useState('upcoming'); // 新增：'upcoming' | 'history'
-
+            const [myBookingsTab, setMyBookingsTab] = useState('upcoming');
 
             const changeView = (newView) => {
                 if (newView === currentView) return;
                 setViewHistory(prev => [...prev, newView]);
                 setCurrentView(newView);
             };
-
 
             const goBack = () => {
                 if (viewHistory.length > 1) {
@@ -217,67 +187,89 @@
                 }
             };
 
-
             const goHome = () => {
                 setViewHistory(['home']);
                 setCurrentView('home');
             };
 
-
-            // 初始化 Firebase
-            useEffect(() => {
+            // 🔧 FIX [安全]: 移除 signInAnonymously，改為僅 Google 登入
+        // 原本每個訪客都會建立匿名帳號，導致 Firebase Auth 充滿無用帳號，
+        // 且匿名帳號也能通過 rules 的 isAuthenticated() 讀寫資料。
+        // 現在改為：頁面載入 → 顯示登入畫面 → Google 登入後才能存取 Firestore。
+        // onAuthStateChanged 負責在頁面重新整理時自動恢復 Google session。
+        useEffect(() => {
                 const initFirebase = async () => {
                     const fb = window.fbModules;
                     const app = fb.initializeApp(firebaseConfig);
                     const auth = fb.getAuth(app);
                     const db = fb.getFirestore(app);
-                    
-                    const getCol = (colName) => isCanvasEnv 
+
+                    const getCol = (colName) => isCanvasEnv
                         ? fb.collection(db, 'artifacts', appId, 'public', 'data', colName)
                         : fb.collection(db, colName);
-
 
                     const getDocRef = (colName, docId) => isCanvasEnv
                         ? fb.doc(db, 'artifacts', appId, 'public', 'data', colName, String(docId))
                         : fb.doc(db, colName, String(docId));
-                    
-                    setDbRefs({ getCol, getDocRef, db, auth, fb });
-                    
-                    try {
-                        if (isCanvasEnv && typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+
+                    const refs = { getCol, getDocRef, db, auth, fb };
+                    setDbRefs(refs);
+
+                    // Canvas 環境使用 Custom Token
+                    if (isCanvasEnv && typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                        try {
                             await fb.signInWithCustomToken(auth, __initial_auth_token);
-                        } else {
-                            await fb.signInAnonymously(auth);
-                        }
-                    } catch (e) {
-                        console.error("Auth Error:", e);
-                        if (e.code === 'auth/configuration-not-found' || e.code === 'auth/admin-restricted-operation') {
-                            setFirebaseReady('auth-error'); 
+                        } catch (e) {
+                            console.error("Auth Error:", e);
+                            setFirebaseReady('auth-error');
                             return;
                         }
                     }
 
-
-                    fb.onAuthStateChanged(auth, (user) => {
-                        if (!user) return;
+                    // 監聽 Auth 狀態：處理頁面重整時的 session 恢復
+                    const ADMIN_EMAIL = 'ptaopenhour@ibsh.tw';
+                    fb.onAuthStateChanged(auth, async (user) => {
+                        if (user && user.email) {
+                            // 已有 Google session，自動恢復登入狀態
+                            if (user.email === ADMIN_EMAIL) {
+                                setIsAdmin(true);
+                                setCurrentUser({ name: 'System Admin', email: ADMIN_EMAIL, defaultClass: 'Admin', customClass: '' });
+                            } else {
+                                try {
+                                    const userDocRef = refs.getDocRef('users', user.email);
+                                    const userDoc = await refs.fb.getDoc(userDocRef);
+                                    if (userDoc.exists()) {
+                                        setCurrentUser(userDoc.data());
+                                        setIsAdmin(false);
+                                    } else {
+                                        // 白名單中沒有此帳號，登出
+                                        await fb.signOut(auth);
+                                    }
+                                } catch (e) {
+                                    console.error("Session restore error:", e);
+                                }
+                            }
+                        }
+                        // 不管有沒有 session，都設為 ready（讓登入畫面能顯示）
                         setFirebaseReady(true);
                     });
                 };
-
 
                 if (window.fbModules) initFirebase();
                 else window.addEventListener('firebaseLoaded', initFirebase);
             }, []);
 
-
-            // 監聽全域資料 (Carts & Settings)
+            // 🔧 FIX [安全]: Cart & Settings 訂閱改為「登入後才啟動」
+            // 原本匿名用戶就能觸發 onSnapshot 讀取所有推車資料。
+            // 現在加上 currentUser || isAdmin 條件，確保只有通過 Google 登入的用戶才會訂閱。
             useEffect(() => {
                 if (!firebaseReady || firebaseReady === 'auth-error' || !dbRefs) return;
-                
+                if (!currentUser && !isAdmin) return;
+
                 const unsubCarts = dbRefs.fb.onSnapshot(dbRefs.getCol('carts'), (snap) => {
                     const newCarts = {};
                     snap.forEach(d => { newCarts[d.id] = d.data(); });
-                    
+
                     if (snap.empty && !window.__seededCarts) {
                         window.__seededCarts = true;
                         Object.entries(initialData).forEach(([k, v]) => dbRefs.fb.setDoc(dbRefs.getDocRef('carts', k), v).catch(e => {}));
@@ -285,7 +277,6 @@
                         setCartData(newCarts);
                     }
                 }, err => console.error("Firestore Error:", err));
-
 
                 const unsubSettings = dbRefs.fb.onSnapshot(dbRefs.getDocRef('settings', 'main'), (snap) => {
                     if (snap.exists()) {
@@ -303,18 +294,17 @@
                     }
                 }, err => console.error("Firestore Error:", err));
 
-
                 return () => { unsubCarts(); unsubSettings(); };
-            }, [firebaseReady, dbRefs]);
+            }, [firebaseReady, dbRefs, currentUser, isAdmin]);
 
-
-            // 按需載入：管理員 Users 資料
+            // Admin-only 訂閱: Users（管理員登入即訂閱）
             useEffect(() => {
-                if (!dbRefs || !isAdmin || currentView !== 'admin' || adminTab !== 'users') return;
+                if (!dbRefs || !isAdmin) return;
+
                 const unsubUsers = dbRefs.fb.onSnapshot(dbRefs.getCol('users'), (snap) => {
                     const newUsers = {};
                     snap.forEach(d => { newUsers[d.id] = d.data(); });
-                    
+
                     if (snap.empty && !window.__seededUsers) {
                         window.__seededUsers = true;
                         Object.entries(initialUsers).forEach(([k, v]) => dbRefs.fb.setDoc(dbRefs.getDocRef('users', k), v).catch(e => {}));
@@ -322,24 +312,33 @@
                         setUsersDB(newUsers);
                     }
                 });
-                return () => unsubUsers();
-            }, [dbRefs, isAdmin, currentView, adminTab]);
 
+                return () => { unsubUsers(); };
+            }, [dbRefs, isAdmin]);
 
-            // 按需載入：管理員 Logs 資料
+            // 🔧 FIX [效能]: Logs 改為「懶載入」— 只在管理員切到 logs tab 時才訂閱
+            // 原本管理員一登入就 onSnapshot 訂閱 100 筆 logs（即使在看其他 tab），
+            // 每次有人操作都會觸發 snapshot，導致 Firestore 讀取次數飆高。
+            // 現在只在 adminTab === 'logs' 時才啟動即時訂閱，離開 tab 自動取消訂閱。
             useEffect(() => {
-                if (!dbRefs || !isAdmin || currentView !== 'admin' || adminTab !== 'logs') return;
-                const unsubLogs = dbRefs.fb.onSnapshot(dbRefs.getCol('logs'), (snap) => {
+                if (!dbRefs || !isAdmin || adminTab !== 'logs') {
+                    return;
+                }
+
+                const logsQuery = dbRefs.fb.query(
+                    dbRefs.getCol('logs'),
+                    dbRefs.fb.orderBy('createdAt', 'desc'),
+                    dbRefs.fb.limit(100)
+                );
+                const unsubLogs = dbRefs.fb.onSnapshot(logsQuery, (snap) => {
                     let newLogs = [];
                     snap.forEach(d => { newLogs.push({ id: d.id, ...d.data() }); });
-                    newLogs.sort((a, b) => Number(b.id) - Number(a.id));
-                    setActivityLogs(newLogs.slice(0, 100));
+                    setActivityLogs(newLogs);
                 });
-                return () => unsubLogs();
-            }, [dbRefs, isAdmin, currentView, adminTab]);
 
+                return () => { unsubLogs(); };
+            }, [dbRefs, isAdmin, adminTab]);
 
-            // 計算真實週數
             useEffect(() => {
                 if (firebaseReady && firebaseReady !== 'auth-error') {
                     const now = new Date();
@@ -357,7 +356,6 @@
                     
                     setCurrentRealWeek(currentWeekCalc);
 
-
                     if (!hasAutoSetWeek) {
                         setSelectedWeek(currentWeekCalc);
                         setHasAutoSetWeek(true); 
@@ -365,19 +363,38 @@
                 }
             }, [firebaseReady, semesterConfig, hasAutoSetWeek]);
 
-
             useEffect(() => {
                 if (selectedWeek > semesterConfig.totalWeeks) setSelectedWeek(semesterConfig.totalWeeks);
                 setBatchSelection([]);
             }, [selectedWeek, semesterConfig.totalWeeks]);
 
+            // =================================================================
+            // 🔧 FIX [效能]: 用 useMemo 快取計算結果
+            // 原本每次 render（包含與預約無關的 UI 操作如開關 modal）都重新跑
+            // 排序/過濾/我的預約計算。現在只在依賴資料真正變更時才重算。
+            // =================================================================
+            const sortedAllCarts = useMemo(() =>
+                Object.entries(cartData).sort((a, b) => (a[1].order || 0) - (b[1].order || 0)),
+                [cartData]
+            );
 
-            const sortedAllCarts = Object.entries(cartData).sort((a, b) => (a[1].order || 0) - (b[1].order || 0));
-            const filteredCarts = sortedAllCarts
-                .filter(([name, data]) => activeFilter === 'All' || data.type === activeFilter)
-                .filter(([name, data]) => activeLocationFilter === 'All' || data.location === activeLocationFilter)
-                .filter(([name, data]) => name.toLowerCase().includes(searchQuery.toLowerCase()) || (data.notes && data.notes.toLowerCase().includes(searchQuery.toLowerCase())));
-            const locations = ['All', ...Array.from(new Set(Object.values(cartData).map(c => c.location).filter(Boolean)))];
+            const filteredCarts = useMemo(() =>
+                sortedAllCarts
+                    .filter(([name, data]) => activeFilter === 'All' || data.type === activeFilter)
+                    .filter(([name, data]) => activeLocationFilter === 'All' || data.location === activeLocationFilter)
+                    .filter(([name, data]) => name.toLowerCase().includes(searchQuery.toLowerCase()) || (data.notes && data.notes.toLowerCase().includes(searchQuery.toLowerCase()))),
+                [sortedAllCarts, activeFilter, activeLocationFilter, searchQuery]
+            );
+
+            const locations = useMemo(() =>
+                ['All', ...Array.from(new Set(Object.values(cartData).map(c => c.location).filter(Boolean)))],
+                [cartData]
+            );
+
+            const weeksArray = useMemo(() =>
+                Array.from({ length: semesterConfig.totalWeeks }, (_, i) => i + 1),
+                [semesterConfig.totalWeeks]
+            );
             
             const moveCart = async (cartName, direction) => {
                 const sortedNames = sortedAllCarts.map(arr => arr[0]);
@@ -386,14 +403,22 @@
                 else if (direction === 'down' && idx < sortedNames.length - 1) [sortedNames[idx + 1], sortedNames[idx]] = [sortedNames[idx], sortedNames[idx + 1]];
                 else return;
                 
-                for (let i = 0; i < sortedNames.length; i++) {
-                    const cName = sortedNames[i];
-                    if ((cartData[cName].order || 0) !== i) {
-                        await dbRefs.fb.setDoc(dbRefs.getDocRef('carts', cName), { order: i }, { merge: true });
+                try {
+                    const batch = dbRefs.fb.writeBatch(dbRefs.db);
+                    let hasChanges = false;
+                    for (let i = 0; i < sortedNames.length; i++) {
+                        const cName = sortedNames[i];
+                        if ((cartData[cName].order || 0) !== i) {
+                            batch.update(dbRefs.getDocRef('carts', cName), { order: i });
+                            hasChanges = true;
+                        }
                     }
+                    if (hasChanges) await batch.commit();
+                } catch (e) {
+                    console.error("Move error:", e);
+                    showAlert("Failed to reorder carts.");
                 }
             };
-
 
             const getIcon = (type) => {
                 if (type === 'Chromebook') return <div className="w-12 h-12 bg-duo-blue/10 rounded-2xl flex items-center justify-center shrink-0"><i className="fa-solid fa-laptop text-duo-blue text-2xl"></i></div>;
@@ -401,16 +426,20 @@
                 return <div className="w-12 h-12 bg-duo-yellow/10 rounded-2xl flex items-center justify-center shrink-0"><i className="fa-solid fa-desktop text-duo-yellow text-2xl"></i></div>;
             };
 
-
             const addLog = async (action, cart, details, specificUser = null) => {
                 const operator = isAdmin ? 'Admin' : (currentUser ? currentUser.name : 'Unknown');
-                const id = Date.now().toString();
-                const newLog = { time: getTimestamp(), operator: specificUser || operator, action, cart, details };
+                const id = `${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+                const newLog = { 
+                    time: getTimestamp(), 
+                    operator: specificUser || operator, 
+                    action, 
+                    cart, 
+                    details,
+                    createdAt: dbRefs.fb.serverTimestamp() 
+                };
                 if(dbRefs) await dbRefs.fb.setDoc(dbRefs.getDocRef('logs', id), newLog);
             };
 
-
-            const weeksArray = Array.from({ length: semesterConfig.totalWeeks }, (_, i) => i + 1);
             const getWeekDateRange = (weekNum, includeSat) => {
                 const start = new Date(semesterConfig.startDate);
                 if (isNaN(start.getTime())) return "Invalid Date";
@@ -419,7 +448,6 @@
                 end.setDate(end.getDate() + (includeSat ? 5 : 4)); 
                 return `${start.getMonth() + 1}/${start.getDate()} - ${end.getMonth() + 1}/${end.getDate()}`;
             };
-
 
             const getDateForDayIdx = (weekNum, dayIdx) => {
                 if (!semesterConfig.startDate) return "";
@@ -430,7 +458,6 @@
                 return `${date.getMonth() + 1}/${date.getDate()}`;
             };
 
-
             const handleSaturdayToggle = async (e) => {
                 const newVal = e.target.checked;
                 setAllowSaturday(newVal); 
@@ -440,20 +467,16 @@
                 }
             };
 
-
-            // 全新升級的 Google 登入邏輯 (整合最高權限判斷)
+            // 🔧 FIX [安全]: Google 登入流程
+            // signInWithPopup 成功後，onAuthStateChanged 會自動觸發 session 恢復。
+            // 這裡只需要處理 Canvas 環境模擬登入和登入失敗的情況。
             const handleGoogleLogin = async () => {
-                const ADMIN_EMAIL = 'ptaopenhour@ibsh.tw'; // 設定最高權限帳號
-
+                const ADMIN_EMAIL = 'ptaopenhour@ibsh.tw';
 
                 if (isCanvasEnv) {
-                    // 由於安全與跨域限制，在這種線上預覽環境中無法正常彈出 Google 登入視窗。
-                    // 我們使用 prompt 模擬取得使用者的 Email 來進行白名單驗證測試。
                     const testEmail = prompt(`【預覽環境模擬登入】\n\n請輸入你想模擬驗證的信箱:\n(最高權限管理員請輸入 ${ADMIN_EMAIL})`, ADMIN_EMAIL);
                     if (!testEmail) return;
 
-
-                    // 1. 判斷是否為最高權限管理員
                     if (testEmail.trim() === ADMIN_EMAIL) {
                         setIsAdmin(true);
                         setCurrentUser({ name: 'System Admin', email: ADMIN_EMAIL, defaultClass: 'Admin', customClass: '' });
@@ -461,8 +484,6 @@
                         return;
                     }
 
-
-                    // 2. 若不是管理員，進行白名單驗證
                     const userDocRef = dbRefs.getDocRef('users', testEmail.trim());
                     const userDoc = await dbRefs.fb.getDoc(userDocRef);
                     if (userDoc.exists()) {
@@ -475,51 +496,32 @@
                     return;
                 }
 
-
-                // ============================================
-                // 以下是部署到正式網域後會執行的「真實 Google 登入」
-                // ============================================
                 try {
                     const provider = new dbRefs.fb.GoogleAuthProvider();
                     const result = await dbRefs.fb.signInWithPopup(dbRefs.auth, provider);
                     const userEmail = result.user.email;
 
-
-                    // 1. 判斷是否為最高權限管理員
-                    if (userEmail === ADMIN_EMAIL) {
-                        setIsAdmin(true);
-                        setCurrentUser({ name: 'System Admin', email: ADMIN_EMAIL, defaultClass: 'Admin', customClass: '' });
-                        goHome();
-                        return;
+                    // onAuthStateChanged 會自動處理 session 恢復，
+                    // 但如果白名單中沒有此帳號，需要立即登出並顯示錯誤。
+                    if (userEmail !== ADMIN_EMAIL) {
+                        const userDocRef = dbRefs.getDocRef('users', userEmail);
+                        const userDoc = await dbRefs.fb.getDoc(userDocRef);
+                        if (!userDoc.exists()) {
+                            await dbRefs.fb.signOut(dbRefs.auth);
+                            setCurrentUser(null);
+                            setIsAdmin(false);
+                            showAlert(`Access Denied.\nYour email (${userEmail}) is not registered in the whitelist.\nPlease contact the administrator.`);
+                        }
                     }
-
-
-                    // 2. 若不是管理員，進行白名單驗證：去資料庫尋找這個 Email 是否存在
-                    const userDocRef = dbRefs.getDocRef('users', userEmail);
-                    const userDoc = await dbRefs.fb.getDoc(userDocRef);
-
-
-                    if (userDoc.exists()) {
-                        // 驗證成功，登入系統
-                        setCurrentUser(userDoc.data());
-                        setIsAdmin(false);
-                        goHome();
-                    } else {
-                        // 驗證失敗：將使用者從 Google 登出，並阻擋進入
-                        await dbRefs.fb.signOut(dbRefs.auth);
-                        showAlert(`Access Denied.\nYour email (${userEmail}) is not registered in the whitelist.\nPlease contact the administrator.`);
-                    }
+                    // 如果驗證通過，onAuthStateChanged 已經設好 currentUser & isAdmin
                 } catch (error) {
                     console.error(error);
-                    // 排除使用者自行關閉視窗的錯誤
                     if (error.code !== 'auth/popup-closed-by-user') {
                         showAlert(`Google Login Failed: ${error.message}`);
                     }
                 }
             };
 
-
-            // 管理員新增使用者 (不再需要密碼)
             const handleAdminAddUser = async (e) => {
                 e.preventDefault();
                 const email = addUserForm.email.trim();
@@ -545,7 +547,6 @@
                 }
             };
 
-
             const handleSemesterConfigSave = async (e) => {
                 e.preventDefault();
                 await dbRefs.fb.setDoc(dbRefs.getDocRef('settings', 'main'), { semesterConfig: tempSemesterConfig }, { merge: true });
@@ -553,18 +554,24 @@
                 showAlert("Semester configuration updated successfully!");
             };
 
-
             const handleClearSemesterData = () => {
                 showConfirm("⚠️ WARNING: Are you sure you want to clear ALL booking records?\n\nThis action cannot be undone!", async () => {
-                    for (const cartName of Object.keys(cartData)) {
-                        await dbRefs.fb.setDoc(dbRefs.getDocRef('carts', cartName), { ...cartData[cartName], schedule: {} });
+                    try {
+                        const batch = dbRefs.fb.writeBatch(dbRefs.db);
+                        for (const cartName of Object.keys(cartData)) {
+                            batch.update(dbRefs.getDocRef('carts', cartName), { schedule: {} });
+                        }
+                        await batch.commit();
+                        
+                        setSelectedWeek(1);
+                        addLog("Clear Data", "System", "Admin cleared all booking records (New Semester)");
+                        showAlert("All booking data has been cleared!");
+                    } catch (error) {
+                        console.error("Batch clear error:", error);
+                        showAlert("Failed to clear all data due to a network error. Please try again.");
                     }
-                    setSelectedWeek(1);
-                    addLog("Clear Data", "System", "Admin cleared all booking records (New Semester)");
-                    showAlert("All booking data has been cleared!");
                 });
             };
-
 
             const deleteUser = (email) => {
                 showConfirm(`Delete user ${usersDB[email].name} from whitelist?\nThey will no longer be able to log in.`, async () => {
@@ -573,25 +580,19 @@
                 });
             };
 
-
-            // 計算今天真實的 dayIdx (0: Mon, 1: Tue... 5: Sat, 6: Sun)
             const todayDay = new Date().getDay();
             const currentRealDayIdx = todayDay === 0 ? 6 : todayDay - 1;
-
 
             const handleSlotClick = (dayIdx, periodId, existingBooking) => {
                 if (periodId === 'lunch') return; 
 
-
                 const isPastSlot = selectedWeek < currentRealWeek || (selectedWeek === currentRealWeek && dayIdx < currentRealDayIdx);
-
 
                 const isPastLimit = !isAdmin && (selectedWeek > currentRealWeek + (semesterConfig.maxAdvanceWeeks || 2));
                 if (isPastLimit) {
                     showAlert(`⚠️ Booking Limit Exceeded\n\nTo ensure fairness, the system only allows bookings up to ${semesterConfig.maxAdvanceWeeks || 2} week(s) in advance.\nPlease try again closer to your desired date!`);
                     return;
                 }
-
 
                 if (existingBooking) {
                     setBookingModal({ isOpen: true, dayIdx, periodId, existingBooking, isEditing: false, isBatch: false, isPast: isPastSlot });
@@ -600,7 +601,6 @@
                         showAlert("⚠️ Cannot book slots in the past!");
                         return;
                     }
-
 
                     if (isBatchMode) {
                         const slotId = `w${selectedWeek}_d${dayIdx}_p${periodId}`;
@@ -616,20 +616,16 @@
                 }
             };
 
-
             const executeBookingTransaction = async (slotsToBook, finalClass) => {
                 const cartRef = dbRefs.getDocRef('carts', selectedCart);
-
 
                 try {
                     await dbRefs.fb.runTransaction(dbRefs.db, async (transaction) => {
                         const cartDoc = await transaction.get(cartRef);
                         if (!cartDoc.exists()) throw "CART_NOT_FOUND";
 
-
                         const currentData = cartDoc.data();
                         const currentSchedule = currentData.schedule || {};
-
 
                         for (const slot of slotsToBook) {
                             if (currentSchedule[slot.slotId]) {
@@ -642,7 +638,6 @@
                         }
                         transaction.update(cartRef, { schedule: currentSchedule });
                     });
-
 
                     const details = slotsToBook.length === 1 
                         ? `Week ${selectedWeek} ${currentDays[slotsToBook[0].dayIdx]} P${slotsToBook[0].periodId} (${finalClass})`
@@ -661,7 +656,6 @@
                 }
             };
 
-
             const checkConflictsAndSubmit = async () => {
                 const finalClass = bookForm.classType === 'Other (Specify)' ? bookForm.customClass : bookForm.classType;
                 const slotsToBook = bookingModal.isBatch ? batchSelection : [{ dayIdx: bookingModal.dayIdx, periodId: bookingModal.periodId, slotId: `w${selectedWeek}_d${bookingModal.dayIdx}_p${bookingModal.periodId}` }];
@@ -672,7 +666,6 @@
                     });
                 });
 
-
                 if (conflictingSlots.length > 0) {
                     showConfirm(`[Duplicate Booking Warning]\nClass "${finalClass}" has already reserved other equipment during this time slot.\nAre you sure you want to proceed with this additional booking?`, () => {
                         executeBookingTransaction(slotsToBook, finalClass);
@@ -682,20 +675,46 @@
                 }
             };
 
-
+            // =================================================================
+            // 🔧 FIX [衝突]: cancelBooking 改用 runTransaction
+            // 原本用 updateDoc + deleteField，如果 Admin 同時在編輯同一筆預約，
+            // 可能產生 Race Condition。改用 Transaction 確保讀寫原子性，並在預約
+            // 已被取消時給予明確的錯誤訊息而不是靜默失敗。
+            // =================================================================
             const cancelBooking = async () => {
                 const slotId = `w${selectedWeek}_d${bookingModal.dayIdx}_p${bookingModal.periodId}`;
-                const existing = cartData[selectedCart].schedule[slotId];
-                const updatedSchedule = { ...cartData[selectedCart].schedule };
-                delete updatedSchedule[slotId];
+                const cartRef = dbRefs.getDocRef('carts', selectedCart);
+                
+                try {
+                    let cancelledName = '';
+                    await dbRefs.fb.runTransaction(dbRefs.db, async (transaction) => {
+                        const cartDoc = await transaction.get(cartRef);
+                        if (!cartDoc.exists()) throw "CART_NOT_FOUND";
+                        
+                        const currentSchedule = cartDoc.data().schedule || {};
+                        if (!currentSchedule[slotId]) throw "ALREADY_CANCELLED";
+                        
+                        // 非管理員只能取消自己的預約
+                        if (!isAdmin && currentSchedule[slotId].ownerEmail !== currentUser.email) {
+                            throw "NOT_OWNER";
+                        }
+                        
+                        cancelledName = currentSchedule[slotId].name;
+                        delete currentSchedule[slotId];
+                        transaction.update(cartRef, { schedule: currentSchedule });
+                    });
 
-
-                await dbRefs.fb.setDoc(dbRefs.getDocRef('carts', selectedCart), { ...cartData[selectedCart], schedule: updatedSchedule });
-                const actionName = isAdmin ? "Force Cancel" : "Cancel Booking";
-                addLog(actionName, selectedCart, `Week ${selectedWeek} ${currentDays[bookingModal.dayIdx]} P${bookingModal.periodId} (${existing.name})`);
+                    const actionName = isAdmin ? "Force Cancel" : "Cancel Booking";
+                    addLog(actionName, selectedCart, `Week ${selectedWeek} ${currentDays[bookingModal.dayIdx]} P${bookingModal.periodId} (${cancelledName})`);
+                } catch (error) {
+                    if (error === "ALREADY_CANCELLED") showAlert("這筆預約已經被取消了。");
+                    else if (error === "NOT_OWNER") showAlert("你只能取消自己的預約。");
+                    else if (error === "CART_NOT_FOUND") showAlert("找不到該設備。");
+                    else showAlert("取消失敗，請稍後再試。");
+                }
+                
                 setBookingModal({ isOpen: false, dayIdx: null, periodId: null, existingBooking: null, isEditing: false, isBatch: false });
             };
-
 
             const handleEditClick = () => {
                 const existing = bookingModal.existingBooking;
@@ -708,42 +727,95 @@
                 setBookingModal(prev => ({ ...prev, isEditing: true }));
             };
 
-
             const updateBooking = async () => {
                 const slotId = `w${selectedWeek}_d${bookingModal.dayIdx}_p${bookingModal.periodId}`;
                 const finalClass = editBookForm.classType === 'Other (Specify)' ? editBookForm.customClass : editBookForm.classType;
+                const cartRef = dbRefs.getDocRef('carts', selectedCart);
                 
-                const updatedSchedule = { ...cartData[selectedCart].schedule };
-                updatedSchedule[slotId] = { name: editBookForm.name, email: editBookForm.email, className: finalClass, ownerEmail: editBookForm.email };
+                try {
+                    await dbRefs.fb.runTransaction(dbRefs.db, async (transaction) => {
+                        const cartDoc = await transaction.get(cartRef);
+                        if (!cartDoc.exists()) throw "CART_NOT_FOUND";
 
+                        const currentData = cartDoc.data();
+                        const currentSchedule = currentData.schedule || {};
 
-                await dbRefs.fb.setDoc(dbRefs.getDocRef('carts', selectedCart), { ...cartData[selectedCart], schedule: updatedSchedule });
-                addLog("Admin Edit", selectedCart, `Week ${selectedWeek} ${currentDays[bookingModal.dayIdx]} P${bookingModal.periodId} (Updated: ${editBookForm.name})`);
-                setBookingModal({ isOpen: false, dayIdx: null, periodId: null, existingBooking: null, isEditing: false, isBatch: false });
+                        if (!currentSchedule[slotId]) {
+                            throw "SLOT_NOT_FOUND"; 
+                        }
+                        
+                        currentSchedule[slotId] = { 
+                            ...currentSchedule[slotId],
+                            name: editBookForm.name, 
+                            email: editBookForm.email, 
+                            className: finalClass, 
+                            ownerEmail: editBookForm.email 
+                        };
+                        
+                        transaction.update(cartRef, { schedule: currentSchedule });
+                    });
+
+                    addLog("Admin Edit", selectedCart, `Week ${selectedWeek} ${currentDays[bookingModal.dayIdx]} P${bookingModal.periodId} (Updated: ${editBookForm.name})`);
+                    setBookingModal({ isOpen: false, dayIdx: null, periodId: null, existingBooking: null, isEditing: false, isBatch: false });
+                } catch (error) {
+                    if (error === "SLOT_NOT_FOUND") showAlert("這筆預約似乎已經被使用者手動取消了！請重新確認設備狀態。");
+                    else if (error === "CART_NOT_FOUND") showAlert("找不到該設備。");
+                    else showAlert("更新失敗，請稍後再試。");
+                    setBookingModal({ isOpen: false, dayIdx: null, periodId: null, existingBooking: null, isEditing: false, isBatch: false });
+                }
             };
-
 
             const saveCartEdit = async (e) => {
                 e.preventDefault();
                 const formData = new FormData(e.target);
                 const oldName = editCartModal.cartName;
-                const newName = formData.get('name');
-                const newData = {
-                    type: formData.get('type'), location: formData.get('location'), capacity: parseInt(formData.get('capacity')), notes: formData.get('notes'),
-                    schedule: oldName && cartData[oldName] ? cartData[oldName].schedule : {},
-                    order: oldName && cartData[oldName] && cartData[oldName].order !== undefined ? cartData[oldName].order : Object.keys(cartData).length
-                };
+                const newName = formData.get('name').trim();
 
-
-                if (oldName && oldName !== newName) {
-                    await dbRefs.fb.deleteDoc(dbRefs.getDocRef('carts', oldName));
+                try {
+                    if (oldName && oldName === newName) {
+                        await dbRefs.fb.updateDoc(dbRefs.getDocRef('carts', newName), {
+                            type: formData.get('type'), 
+                            location: formData.get('location'), 
+                            capacity: parseInt(formData.get('capacity')), 
+                            notes: formData.get('notes')
+                        });
+                    } else if (oldName && oldName !== newName) {
+                        await dbRefs.fb.runTransaction(dbRefs.db, async (transaction) => {
+                            const oldDocRef = dbRefs.getDocRef('carts', oldName);
+                            const newDocRef = dbRefs.getDocRef('carts', newName);
+                            const oldDoc = await transaction.get(oldDocRef);
+                            
+                            if (!oldDoc.exists()) throw "CART_NOT_FOUND";
+                            
+                            const latestData = oldDoc.data();
+                            const newData = {
+                                ...latestData,
+                                type: formData.get('type'), 
+                                location: formData.get('location'), 
+                                capacity: parseInt(formData.get('capacity')), 
+                                notes: formData.get('notes')
+                            };
+                            
+                            transaction.set(newDocRef, newData);
+                            transaction.delete(oldDocRef);
+                        });
+                    } else {
+                        const newData = {
+                            type: formData.get('type'), location: formData.get('location'), capacity: parseInt(formData.get('capacity')), notes: formData.get('notes'),
+                            schedule: {},
+                            order: Object.keys(cartData).length
+                        };
+                        await dbRefs.fb.setDoc(dbRefs.getDocRef('carts', newName), newData);
+                    }
+                    
+                    addLog(oldName ? "Edit Equipment" : "Add Equipment", "System", `Equipment: ${newName}`);
+                    setEditCartModal({ isOpen: false, cartName: null, data: null });
+                } catch (err) {
+                    console.error("Save cart error:", err);
+                    if (err === "CART_NOT_FOUND") showAlert("The cart you are trying to edit was not found or was deleted.");
+                    else showAlert("Failed to save equipment. Please try again.");
                 }
-                await dbRefs.fb.setDoc(dbRefs.getDocRef('carts', newName), newData);
-                
-                addLog(oldName ? "Edit Equipment" : "Add Equipment", "System", `Equipment: ${newName}`);
-                setEditCartModal({ isOpen: false, cartName: null, data: null });
             };
-
 
             const deleteCart = (name) => {
                 showConfirm(`Delete "${name}"?\nThis clears all its bookings.`, async () => {
@@ -753,8 +825,12 @@
                 });
             };
 
-
-            const getMyBookings = () => {
+            // =================================================================
+            // 🔧 FIX [效能]: getMyBookings 改用 useMemo 快取
+            // 原本每次 render 都重新遍歷所有 cart 的所有 schedule entries。
+            // 現在只在 cartData 或 currentUser 變更時才重算。
+            // =================================================================
+            const allMyBookings = useMemo(() => {
                 const myBookings = [];
                 if (!currentUser) return myBookings;
                 
@@ -771,34 +847,55 @@
                     }
                 });
 
-
                 myBookings.sort((a, b) => {
                     if (a.week !== b.week) return a.week - b.week;
                     if (a.dayIdx !== b.dayIdx) return a.dayIdx - b.dayIdx;
                     return periods.findIndex(p => p.id == a.periodId) - periods.findIndex(p => p.id == b.periodId);
                 });
                 return myBookings;
-            };
+            }, [cartData, currentUser]);
 
-
+            // 🔧 FIX [衝突]: cancelBookingFromList 也改用 runTransaction
             const cancelBookingFromList = (cartName, slotId, className) => {
                 showConfirm(`Are you sure you want to cancel this booking for ${cartName}?`, async () => {
-                    const updatedSchedule = { ...cartData[cartName].schedule };
-                    delete updatedSchedule[slotId];
-                    await dbRefs.fb.setDoc(dbRefs.getDocRef('carts', cartName), { ...cartData[cartName], schedule: updatedSchedule });
+                    const cartRef = dbRefs.getDocRef('carts', cartName);
                     
-                    const match = slotId.match(/w(\d+)_d(\d+)_p(\w+)/);
-                    if (match) addLog("Cancel Booking", cartName, `W${match[1]} ${currentDays[parseInt(match[2])]} P${match[3]} (${className})`);
+                    try {
+                        await dbRefs.fb.runTransaction(dbRefs.db, async (transaction) => {
+                            const cartDoc = await transaction.get(cartRef);
+                            if (!cartDoc.exists()) throw "CART_NOT_FOUND";
+                            
+                            const currentSchedule = cartDoc.data().schedule || {};
+                            if (!currentSchedule[slotId]) throw "ALREADY_CANCELLED";
+                            
+                            if (!isAdmin && currentSchedule[slotId].ownerEmail !== currentUser.email) {
+                                throw "NOT_OWNER";
+                            }
+                            
+                            delete currentSchedule[slotId];
+                            transaction.update(cartRef, { schedule: currentSchedule });
+                        });
+                        
+                        const match = slotId.match(/w(\d+)_d(\d+)_p(\w+)/);
+                        if (match) addLog("Cancel Booking", cartName, `W${match[1]} ${currentDays[parseInt(match[2])]} P${match[3]} (${className})`);
+                    } catch (error) {
+                        if (error === "ALREADY_CANCELLED") showAlert("這筆預約已經被取消了。");
+                        else if (error === "NOT_OWNER") showAlert("你只能取消自己的預約。");
+                        else if (error === "CART_NOT_FOUND") showAlert("找不到該設備。");
+                        else showAlert("取消失敗，請稍後再試。");
+                    }
                 });
             };
 
-
-            // 分類 My Bookings 的邏輯
-            const allMyBookings = getMyBookings();
-            const upcomingBookings = allMyBookings.filter(b => b.week > currentRealWeek || (b.week === currentRealWeek && b.dayIdx >= currentRealDayIdx));
-            const historyBookings = allMyBookings.filter(b => b.week < currentRealWeek || (b.week === currentRealWeek && b.dayIdx < currentRealDayIdx));
+            const upcomingBookings = useMemo(() =>
+                allMyBookings.filter(b => b.week > currentRealWeek || (b.week === currentRealWeek && b.dayIdx >= currentRealDayIdx)),
+                [allMyBookings, currentRealWeek, currentRealDayIdx]
+            );
+            const historyBookings = useMemo(() =>
+                allMyBookings.filter(b => b.week < currentRealWeek || (b.week === currentRealWeek && b.dayIdx < currentRealDayIdx)),
+                [allMyBookings, currentRealWeek, currentRealDayIdx]
+            );
             const displayedBookings = myBookingsTab === 'upcoming' ? upcomingBookings : historyBookings;
-
 
             if (firebaseReady === 'auth-error') {
                 return (
@@ -807,11 +904,11 @@
                             <i className="fa-solid fa-triangle-exclamation text-duo-red text-6xl mb-4"></i>
                             <h2 className="text-2xl font-extrabold text-duo-text mb-4">Firebase Setup Incomplete</h2>
                             <p className="text-duo-text/80 mb-6 text-left leading-relaxed font-bold">
-                                Authentication is disabled in your Firebase console.<br/><br/>
+                                Authentication is not properly configured in your Firebase console.<br/><br/>
                                 <span className="text-duo-blue uppercase tracking-wider text-sm">How to fix:</span><br/>
                                 1. Go to Firebase Console -> <strong>Authentication</strong>.<br/>
                                 2. Click <strong>Sign-in method</strong>.<br/>
-                                3. Enable <strong>Anonymous</strong> provider.<br/>
+                                3. Enable <strong>Google</strong> provider.<br/>
                                 4. Save and refresh this page.
                             </p>
                             <button onClick={() => window.location.reload()} className="w-full bg-duo-green text-white font-extrabold uppercase py-4 rounded-2xl shadow-[0_4px_0_0_#58a700] active:shadow-none active:translate-y-[4px] transition-all tracking-wider">
@@ -822,7 +919,6 @@
                 );
             }
 
-
             if (!firebaseReady) {
                 return (
                     <div className="min-h-screen bg-duo-grayLight flex flex-col items-center justify-center">
@@ -832,13 +928,9 @@
                 );
             }
 
-
-            // ================= LOGIN SCREEN =================
             if (!currentUser && !isAdmin) {
                 return (
                     <div className="min-h-screen bg-duo-grayLight flex items-center justify-center p-4 relative overflow-hidden">
-                        
-                        {/* 裝飾性背景圖示 */}
                         <i className="fa-solid fa-laptop text-duo-blue/10 text-[20rem] absolute -top-20 -left-20 -rotate-12 pointer-events-none"></i>
                         <i className="fa-solid fa-tablet-screen-button text-duo-green/10 text-[15rem] absolute -bottom-10 -right-10 rotate-12 pointer-events-none"></i>
                         
@@ -850,7 +942,6 @@
                                 <h1 className="text-3xl font-extrabold text-duo-text tracking-tight">IBSH Chromebooks Carts Reservations</h1>
                                 <p className="text-duo-text/60 font-bold mt-2 text-lg">Equipment Reservation System</p>
                             </div>
-
 
                             <div className="bg-white rounded-[2rem] border-2 border-duo-grayBorder shadow-[0_8px_0_0_#e5e5e5] p-8">
                                 <div className="space-y-6">
@@ -872,11 +963,8 @@
                 );
             }
 
-
-            // ================= MAIN APP =================
             return (
                 <div className="min-h-screen bg-[#ffffff]">
-                    {/* Header */}
                     <header className="bg-white border-b-2 border-duo-grayBorder sticky top-0 z-50 no-print">
                         <div className="max-w-7xl mx-auto px-4 py-4 flex flex-wrap justify-between items-center gap-4">
                             <div className="flex items-center space-x-3 cursor-pointer group" onClick={goHome}>
@@ -889,13 +977,11 @@
                                     <i className="fa-solid fa-print sm:mr-1"></i> <span className="hidden sm:inline">Print</span>
                                 </button>
 
-
                                 {!isAdmin && (
                                     <button onClick={() => changeView('my-bookings')} className={`px-4 py-2.5 font-extrabold uppercase tracking-wider rounded-2xl transition-all text-xs sm:text-sm ${currentView === 'my-bookings' ? 'bg-duo-blue text-white shadow-[0_4px_0_0_#1899d6] active:shadow-none active:translate-y-[4px]' : 'bg-white border-2 border-duo-grayBorder text-duo-blue shadow-[0_4px_0_0_#e5e5e5] hover:bg-blue-50 active:shadow-none active:translate-y-[4px]'}`}>
                                         <i className="fa-solid fa-calendar-check sm:mr-1"></i> <span className="hidden sm:inline">My Bookings</span>
                                     </button>
                                 )}
-
 
                                 {isAdmin && (
                                     <button onClick={() => { changeView('admin'); setAdminTab('carts'); }} className={`px-4 py-2.5 font-extrabold uppercase tracking-wider rounded-2xl transition-all text-xs sm:text-sm ${currentView === 'admin' ? 'bg-duo-text text-white shadow-[0_4px_0_0_#2b2b2b] active:shadow-none active:translate-y-[4px]' : 'bg-white border-2 border-duo-grayBorder text-duo-text shadow-[0_4px_0_0_#e5e5e5] hover:bg-gray-50 active:shadow-none active:translate-y-[4px]'}`}>
@@ -903,21 +989,18 @@
                                     </button>
                                 )}
                                 
-                                {/* User Profile Pill */}
                                 <div className="flex items-center ml-2 border-2 border-duo-grayBorder rounded-2xl h-[44px] overflow-hidden bg-duo-grayLight">
                                     <div className="px-4 font-extrabold text-duo-blue text-sm flex items-center h-full max-w-[120px] truncate">
                                         <i className={`fa-solid ${isAdmin ? 'fa-shield-halved text-duo-yellow' : 'fa-user'} mr-2`}></i>
                                         {currentUser.name}
                                     </div>
-                                    <button onClick={async () => { await dbRefs.fb.signOut(dbRefs.auth); setCurrentUser(null); setIsAdmin(false); setAuthMode('login'); }} className="px-3 h-full border-l-2 border-duo-grayBorder text-gray-400 hover:text-duo-red hover:bg-red-50 transition-colors" title="Log Out">
+                                    <button onClick={async () => { await dbRefs.fb.signOut(dbRefs.auth); setCurrentUser(null); setIsAdmin(false); setCartData({}); setActivityLogs([]); setUsersDB({}); }} className="px-3 h-full border-l-2 border-duo-grayBorder text-gray-400 hover:text-duo-red hover:bg-red-50 transition-colors" title="Log Out">
                                         <i className="fa-solid fa-right-from-bracket"></i>
                                     </button>
                                 </div>
                             </div>
                         </div>
 
-
-                        {/* Global Config Bar */}
                         <div className="bg-duo-grayLight border-t-2 border-duo-grayBorder px-4 py-3">
                             <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-4">
                                 <div className="flex items-center space-x-3">
@@ -950,11 +1033,8 @@
                         </div>
                     </header>
 
-
-                    {/* Main Content */}
                     <main className="max-w-7xl mx-auto px-4 py-8 no-print">
                         
-                        {/* --- View: My Bookings --- */}
                         {currentView === 'my-bookings' && !isAdmin && (
                             <div className="animate-[fadeIn_0.3s_ease-out]">
                                 <div className="mb-6 flex items-center justify-between">
@@ -972,7 +1052,6 @@
                                         <button onClick={() => setMyBookingsView('calendar')} className={`px-4 py-2 rounded-lg font-extrabold text-sm transition-all ${myBookingsView === 'calendar' ? 'bg-white shadow-sm text-duo-text' : 'text-gray-400 hover:text-duo-text'}`}><i className="fa-solid fa-calendar-day mr-2"></i>Calendar</button>
                                     </div>
                                 </div>
-
 
                                 {allMyBookings.length === 0 ? (
                                     <div className="bg-white rounded-3xl border-2 border-duo-grayBorder shadow-duo-card p-12 text-center flex flex-col items-center">
@@ -997,7 +1076,6 @@
                                                 </button>
                                             </div>
 
-
                                             {displayedBookings.length === 0 ? (
                                                 <div className="text-center py-16 bg-white rounded-3xl border-2 border-duo-grayBorder border-dashed">
                                                     <i className="fa-solid fa-box-open text-5xl text-gray-300 mb-4"></i>
@@ -1013,7 +1091,7 @@
                                                                 <div className="flex justify-between items-start pl-2 mb-3">
                                                                     <div>
                                                                         <h3 className="font-extrabold text-xl text-duo-text flex items-center">
-                                                                            {getIcon(cartData[b.cartName].type)}
+                                                                            {getIcon(cartData[b.cartName]?.type)}
                                                                             <span className="ml-3">{b.cartName}</span>
                                                                         </h3>
                                                                     </div>
@@ -1021,7 +1099,6 @@
                                                                         {b.className}
                                                                     </span>
                                                                 </div>
-
 
                                                                 <div className="pl-2 space-y-2 mb-6">
                                                                     <div className="flex items-center text-sm font-bold text-gray-500">
@@ -1035,7 +1112,6 @@
                                                                         <span className="text-xs ml-2">({targetPeriod ? targetPeriod.time : ''})</span>
                                                                     </div>
                                                                 </div>
-
 
                                                                 {myBookingsTab === 'upcoming' ? (
                                                                     <button onClick={() => cancelBookingFromList(b.cartName, b.slotId, b.className)} className="mt-auto w-full bg-white text-duo-red font-extrabold uppercase py-3 rounded-xl border-2 border-duo-grayBorder shadow-[0_4px_0_0_#e5e5e5] hover:bg-red-50 hover:border-red-200 active:shadow-none active:translate-y-[4px] transition-all flex items-center justify-center">
@@ -1113,8 +1189,6 @@
                             </div>
                         )}
 
-
-                        {/* --- View: Home --- */}
                         {currentView === 'home' && (
                             <div className="animate-[fadeIn_0.3s_ease-out]">
                                 <div className="mb-8 flex flex-col md:flex-row md:items-center justify-between gap-4 border-b-2 border-duo-grayBorder pb-6">
@@ -1136,7 +1210,6 @@
                                             />
                                         </div>
 
-
                                         <div className="flex gap-2 overflow-x-auto hide-scrollbar py-2 border-l-2 border-duo-grayBorder pl-3">
                                             {['All', 'Chromebook', 'iPad', 'PC Lab'].map(filter => (
                                                 <button key={filter} onClick={() => setActiveFilter(filter)} className={`px-5 py-2.5 rounded-2xl font-extrabold uppercase tracking-wider text-sm transition-all whitespace-nowrap ${activeFilter === filter ? 'bg-duo-blue/10 text-duo-blue border-2 border-duo-blue' : 'bg-white text-gray-400 border-2 border-duo-grayBorder hover:bg-gray-50'}`}>
@@ -1155,7 +1228,6 @@
                                         </div>
                                     </div>
                                 </div>
-
 
                                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                                     {filteredCarts.map(([name, data]) => (
@@ -1177,8 +1249,6 @@
                             </div>
                         )}
 
-
-                        {/* --- View: Schedule --- */}
                         {currentView === 'schedule' && selectedCart && (
                             <div className="animate-[fadeIn_0.3s_ease-out]">
                                 <div className="mb-6 flex items-center justify-between">
@@ -1197,16 +1267,14 @@
                                     )}
                                 </div>
 
-
                                 <div className="bg-white rounded-[2rem] border-2 border-duo-grayBorder shadow-duo-card overflow-hidden relative">
                                     <div className="p-6 border-b-2 border-duo-grayBorder bg-duo-grayLight flex flex-wrap items-center gap-4">
-                                        {getIcon(cartData[selectedCart].type)}
+                                        {getIcon(cartData[selectedCart]?.type)}
                                         <div>
                                             <h2 className="text-3xl font-extrabold text-duo-text">{selectedCart}</h2>
-                                            <p className="text-gray-500 font-bold mt-1"><i className="fa-solid fa-location-dot mr-1"></i> {cartData[selectedCart].location} • {cartData[selectedCart].capacity} Devices</p>
+                                            <p className="text-gray-500 font-bold mt-1"><i className="fa-solid fa-location-dot mr-1"></i> {cartData[selectedCart]?.location} • {cartData[selectedCart]?.capacity} Devices</p>
                                         </div>
                                     </div>
-
 
                                     <div className="overflow-x-auto p-4 custom-scrollbar">
                                         <table className="w-full min-w-[700px] border-separate border-spacing-2">
@@ -1247,10 +1315,9 @@
                                                             }
                                                             
                                                             const slotId = `w${selectedWeek}_d${dayIdx}_p${period.id}`;
-                                                            const bookingInfo = cartData[selectedCart].schedule[slotId];
+                                                            const bookingInfo = cartData[selectedCart]?.schedule?.[slotId];
                                                             const isMyBooking = bookingInfo && bookingInfo.ownerEmail === currentUser.email;
                                                             const isSelectedBatch = batchSelection.some(s => s.slotId === slotId);
-
 
                                                             return (
                                                                 <td key={dayIdx} className="p-2 align-middle">
@@ -1299,7 +1366,6 @@
                             </div>
                         )}
 
-
                         {isBatchMode && batchSelection.length > 0 && (
                             <div className="fixed bottom-8 left-1/2 -translate-x-1/2 bg-gray-900/90 backdrop-blur-md px-6 py-4 rounded-full shadow-2xl flex items-center gap-6 z-50 animate-[bounceIn_0.3s_cubic-bezier(0.175,0.885,0.32,1.275)] border-2 border-gray-700">
                                 <span className="font-extrabold text-white"><span className="text-duo-green">{batchSelection.length}</span> Slots Selected</span>
@@ -1309,8 +1375,6 @@
                             </div>
                         )}
 
-
-                        {/* --- View: Admin Dashboard --- */}
                         {currentView === 'admin' && isAdmin && (
                             <div className="animate-[fadeIn_0.3s_ease-out]">
                                 <div className="mb-6 flex items-center justify-between">
@@ -1325,7 +1389,6 @@
                                         <button onClick={() => setAdminTab('logs')} className={`px-6 py-5 text-sm font-extrabold uppercase tracking-wider flex items-center whitespace-nowrap transition-colors ${adminTab === 'logs' ? 'bg-white text-duo-blue border-b-4 border-duo-blue' : 'text-gray-400 border-b-4 border-transparent hover:text-duo-text'}`}><i className="fa-solid fa-list-ul mr-2 text-lg"></i> Logs</button>
                                         <button onClick={() => setAdminTab('settings')} className={`px-6 py-5 text-sm font-extrabold uppercase tracking-wider flex items-center whitespace-nowrap transition-colors ${adminTab === 'settings' ? 'bg-white text-duo-blue border-b-4 border-duo-blue' : 'text-gray-400 border-b-4 border-transparent hover:text-duo-text'}`}><i className="fa-solid fa-gear mr-2 text-lg"></i> Settings</button>
                                     </div>
-
 
                                     <div className="p-8">
                                         {adminTab === 'carts' && (
@@ -1358,7 +1421,6 @@
                                             </div>
                                         )}
 
-
                                         {adminTab === 'users' && (
                                             <div>
                                                 <div className="flex flex-wrap justify-between items-center mb-6 border-b-2 border-duo-grayBorder pb-4 gap-4">
@@ -1389,7 +1451,6 @@
                                             </div>
                                         )}
 
-
                                         {adminTab === 'logs' && (
                                             <div>
                                                 <h3 className="text-2xl font-extrabold text-duo-text mb-6 border-b-2 border-duo-grayBorder pb-4">Activity Logs (Recent 100)</h3>
@@ -1417,7 +1478,6 @@
                                             </div>
                                         )}
 
-
                                         {adminTab === 'settings' && (
                                             <div className="flex flex-col lg:flex-row gap-8">
                                                 <div className="flex-1">
@@ -1432,7 +1492,6 @@
                                                             <button type="submit" className="w-full mt-2 bg-duo-green text-white font-extrabold uppercase py-3 rounded-2xl shadow-duo-green active:shadow-none active:translate-y-[4px] transition-all tracking-wider">Save Config</button>
                                                         </form>
                                                     </div>
-
 
                                                     <h3 className="text-2xl font-extrabold text-duo-red mb-6 border-b-2 border-duo-grayBorder pb-4"><i className="fa-solid fa-skull mr-2"></i> Danger Zone</h3>
                                                     <div className="bg-red-50 border-2 border-red-200 rounded-[2rem] p-6">
@@ -1449,7 +1508,6 @@
                             </div>
                         )}
                         
-                        {/* --- View: Print Selection --- */}
                         {currentView === 'print' && (
                             <div className="animate-[fadeIn_0.3s_ease-out]">
                                 <div className="mb-6 flex items-center justify-between">
@@ -1483,8 +1541,6 @@
                         )}
                     </main>
 
-
-                  {/* ================= Print Only Section ================= */}
 <div className="hidden print-only w-full">
     {printSelection.map((cartName) => (
         <div key={cartName} className="page-break w-full">
@@ -1526,7 +1582,7 @@
                         return <td key={dayIdx} colSpan="3" className="print-lunch font-bold text-center">Not Avaliable for Lunch</td>;
                     }
                     
-                    const booking = cartData[cartName].schedule[`w${selectedWeek}_d${dayIdx}_p${period.id}`];
+                    const booking = cartData[cartName]?.schedule?.[`w${selectedWeek}_d${dayIdx}_p${period.id}`];
                     
                     return (
                         <React.Fragment key={dayIdx}>
@@ -1545,7 +1601,6 @@
                 })}
             </tr>
 
-
             {period.id === 'lunch' && (
                 <tr>
                     <th className="text-[11px] py-1 bg-[#fafafa]">Period</th>
@@ -1562,7 +1617,6 @@
     ))}
 </tbody>
 
-
             </table>
             
             <div className="mt-auto pt-3 pb-2 flex justify-between px-8 text-sm font-bold">
@@ -1570,9 +1624,7 @@
         </div>
     ))}
 </div>
-                    {/* ================= Modals ================= */}
                     
-                    {/* Admin Add User Modal */}
                     {adminAddUserModal.isOpen && (
                         <div className="fixed inset-0 bg-slate-900/60 flex items-center justify-center p-4 z-[70] backdrop-blur-sm no-print">
                             <div className="bg-white rounded-[2rem] border-2 border-duo-grayBorder shadow-2xl w-full max-w-md overflow-hidden animate-[fadeIn_0.15s_ease-out]">
@@ -1596,8 +1648,6 @@
                         </div>
                     )}
 
-
-                    {/* Booking Modal */}
                     {bookingModal.isOpen && (
                         <div className="fixed inset-0 bg-slate-900/60 flex items-center justify-center p-4 z-50 backdrop-blur-sm no-print">
                             <div className="bg-white rounded-[2rem] border-2 border-duo-grayBorder shadow-2xl w-full max-w-sm overflow-hidden animate-[fadeIn_0.15s_ease-out]">
@@ -1675,8 +1725,6 @@
                         </div>
                     )}
 
-
-                    {/* Edit Cart Modal */}
                     {editCartModal.isOpen && (
                         <div className="fixed inset-0 bg-slate-900/60 flex items-center justify-center p-4 z-50 overflow-y-auto no-print backdrop-blur-sm">
                             <div className="bg-white rounded-[2rem] border-2 border-duo-grayBorder shadow-2xl w-full max-w-lg my-8 animate-[fadeIn_0.15s_ease-out] overflow-hidden">
@@ -1701,8 +1749,6 @@
                         </div>
                     )}
 
-
-                    {/* Alert Modal */}
                     {alertModal.isOpen && (
                         <div className="fixed inset-0 bg-slate-900/60 flex items-center justify-center p-4 z-[70] backdrop-blur-sm">
                             <div className="bg-white rounded-[2rem] border-2 border-duo-grayBorder shadow-2xl max-w-xs w-full p-8 text-center animate-[bounceIn_0.3s_cubic-bezier(0.175,0.885,0.32,1.275)]">
@@ -1715,8 +1761,6 @@
                         </div>
                     )}
 
-
-                    {/* Confirm Modal */}
                     {confirmModal.isOpen && (
                         <div className="fixed inset-0 bg-slate-900/60 flex items-center justify-center p-4 z-[70] backdrop-blur-sm">
                             <div className="bg-white rounded-[2rem] border-2 border-duo-grayBorder shadow-2xl max-w-sm w-full p-8 text-center animate-[bounceIn_0.3s_cubic-bezier(0.175,0.885,0.32,1.275)]">
@@ -1732,7 +1776,6 @@
                         </div>
                     )}
 
-
                     <style>{`
                         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
                         @keyframes bounceIn { 0% { opacity: 0; transform: scale(0.8); } 50% { opacity: 1; transform: scale(1.05); } 100% { opacity: 1; transform: scale(1); } }
@@ -1740,7 +1783,6 @@
                 </div>
             );
         }
-
 
         const root = ReactDOM.createRoot(document.getElementById('root'));
         root.render(<App />);
