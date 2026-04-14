@@ -1256,15 +1256,13 @@
                                         <i className="fa-solid fa-arrow-left mr-2"></i> Back
                                     </button>
                                     
-                                    {!isAdmin && (
-                                        <div className="flex items-center space-x-3 bg-white px-4 py-2 rounded-xl border-2 border-duo-grayBorder">
-                                            <span className="text-sm font-extrabold text-duo-text uppercase tracking-wider">Batch Mode</span>
-                                            <div className="relative cursor-pointer" onClick={() => { setIsBatchMode(!isBatchMode); setBatchSelection([]); }}>
-                                                <div className={`block w-12 h-6 rounded-full border-2 transition-colors ${isBatchMode ? 'bg-duo-blue border-duo-blueDark' : 'bg-gray-200 border-gray-300'}`}></div>
-                                                <div className={`absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform ${isBatchMode ? 'transform translate-x-6' : ''}`}></div>
-                                            </div>
+                                    <div className="flex items-center space-x-3 bg-white px-4 py-2 rounded-xl border-2 border-duo-grayBorder">
+                                        <span className="text-sm font-extrabold text-duo-text uppercase tracking-wider">Batch Mode</span>
+                                        <div className="relative cursor-pointer" onClick={() => { setIsBatchMode(!isBatchMode); setBatchSelection([]); }}>
+                                            <div className={`block w-12 h-6 rounded-full border-2 transition-colors ${isBatchMode ? 'bg-duo-blue border-duo-blueDark' : 'bg-gray-200 border-gray-300'}`}></div>
+                                            <div className={`absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform ${isBatchMode ? 'transform translate-x-6' : ''}`}></div>
                                         </div>
-                                    )}
+                                    </div>
                                 </div>
 
                                 <div className="bg-white rounded-[2rem] border-2 border-duo-grayBorder shadow-duo-card overflow-hidden relative">
