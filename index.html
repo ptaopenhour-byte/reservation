@@ -165,6 +165,9 @@
             const [editCartModal, setEditCartModal] = useState({ isOpen: false, cartName: null, data: null });
             const [printSelection, setPrintSelection] = useState([]);
 
+            const [recurringLocks, setRecurringLocks] = useState([]);
+            const [lockModal, setLockModal] = useState({ isOpen: false, lockId: null, data: null });
+
             const [isBatchMode, setIsBatchMode] = useState(false);
             const [batchSelection, setBatchSelection] = useState([]);
             const [myBookingsView, setMyBookingsView] = useState('list');
@@ -286,6 +289,7 @@
                             setTempSemesterConfig({ ...data.semesterConfig, maxAdvanceWeeks: data.semesterConfig.maxAdvanceWeeks || 2 });
                         }
                         if (data.allowSaturday !== undefined) setAllowSaturday(data.allowSaturday);
+                        setRecurringLocks(Array.isArray(data.recurringLocks) ? data.recurringLocks : []);
                     } else {
                         dbRefs.fb.setDoc(dbRefs.getDocRef('settings', 'main'), {
                             semesterConfig: { startDate: '2026-02-23', totalWeeks: 19, maxAdvanceWeeks: 2 },
@@ -573,6 +577,76 @@
                 });
             };
 
+            const getLockForSlot = (cartName, week, dayIdx, periodId) => {
+                if (periodId === 'lunch') return null;
+                return recurringLocks.find(lock =>
+                    lock.cartName === cartName &&
+                    Number(lock.dayIdx) === Number(dayIdx) &&
+                    String(lock.periodId) === String(periodId) &&
+                    week >= Number(lock.startWeek) &&
+                    week < Number(lock.startWeek) + Number(lock.weeks)
+                ) || null;
+            };
+
+            const saveLock = async (e) => {
+                e.preventDefault();
+                const formData = new FormData(e.target);
+                const lockData = {
+                    id: lockModal.lockId || `lock_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+                    name: formData.get('name').trim() || 'Locked',
+                    cartName: formData.get('cartName'),
+                    dayIdx: Number(formData.get('dayIdx')),
+                    periodId: formData.get('periodId'),
+                    startWeek: Number(formData.get('startWeek')),
+                    weeks: Number(formData.get('weeks'))
+                };
+
+                if (!lockData.cartName) { showAlert("請選擇一個 Cart。"); return; }
+                if (lockData.weeks < 1) { showAlert("持續週數必須至少 1 週。"); return; }
+
+                try {
+                    const newLocks = lockModal.lockId
+                        ? recurringLocks.map(l => l.id === lockModal.lockId ? lockData : l)
+                        : [...recurringLocks, lockData];
+
+                    await dbRefs.fb.setDoc(dbRefs.getDocRef('settings', 'main'), { recurringLocks: newLocks }, { merge: true });
+
+                    const cartRef = dbRefs.getDocRef('carts', lockData.cartName);
+                    await dbRefs.fb.runTransaction(dbRefs.db, async (transaction) => {
+                        const cartDoc = await transaction.get(cartRef);
+                        if (!cartDoc.exists()) return;
+                        const schedule = cartDoc.data().schedule || {};
+                        let changed = false;
+                        for (let w = lockData.startWeek; w < lockData.startWeek + lockData.weeks; w++) {
+                            const slotId = `w${w}_d${lockData.dayIdx}_p${lockData.periodId}`;
+                            if (schedule[slotId]) { delete schedule[slotId]; changed = true; }
+                        }
+                        if (changed) transaction.update(cartRef, { schedule });
+                    });
+
+                    addLog(lockModal.lockId ? "Edit Lock" : "Add Lock", lockData.cartName, `${lockData.name} · Wk${lockData.startWeek}-${lockData.startWeek + lockData.weeks - 1} · ${currentDays[lockData.dayIdx] || `Day${lockData.dayIdx}`} P${lockData.periodId}`);
+                    setLockModal({ isOpen: false, lockId: null, data: null });
+                } catch (err) {
+                    console.error("Save lock error:", err);
+                    showAlert("儲存鎖定失敗，請稍後再試。");
+                }
+            };
+
+            const deleteLock = (lockId) => {
+                const lock = recurringLocks.find(l => l.id === lockId);
+                if (!lock) return;
+                showConfirm(`確定要刪除鎖定「${lock.name}」嗎？`, async () => {
+                    try {
+                        const newLocks = recurringLocks.filter(l => l.id !== lockId);
+                        await dbRefs.fb.setDoc(dbRefs.getDocRef('settings', 'main'), { recurringLocks: newLocks }, { merge: true });
+                        addLog("Delete Lock", lock.cartName, `${lock.name} · Wk${lock.startWeek}-${lock.startWeek + lock.weeks - 1}`);
+                    } catch (err) {
+                        console.error("Delete lock error:", err);
+                        showAlert("刪除鎖定失敗，請稍後再試。");
+                    }
+                });
+            };
+
             const deleteUser = (email) => {
                 showConfirm(`Delete user ${usersDB[email].name} from whitelist?\nThey will no longer be able to log in.`, async () => {
                     await dbRefs.fb.deleteDoc(dbRefs.getDocRef('users', email));
@@ -584,7 +658,13 @@
             const currentRealDayIdx = todayDay === 0 ? 6 : todayDay - 1;
 
             const handleSlotClick = (dayIdx, periodId, existingBooking) => {
-                if (periodId === 'lunch') return; 
+                if (periodId === 'lunch') return;
+
+                const lock = getLockForSlot(selectedCart, selectedWeek, dayIdx, periodId);
+                if (lock) {
+                    showAlert(`🔒 此時段已被鎖定\n\n名稱：${lock.name}\n期間：第 ${lock.startWeek} - ${lock.startWeek + lock.weeks - 1} 週`);
+                    return;
+                }
 
                 const isPastSlot = selectedWeek < currentRealWeek || (selectedWeek === currentRealWeek && dayIdx < currentRealDayIdx);
 
@@ -628,10 +708,13 @@
                         const currentSchedule = currentData.schedule || {};
 
                         for (const slot of slotsToBook) {
-                            if (currentSchedule[slot.slotId]) {
-                                throw "SLOT_ALREADY_TAKEN"; 
+                            if (getLockForSlot(selectedCart, selectedWeek, slot.dayIdx, slot.periodId)) {
+                                throw "SLOT_LOCKED";
                             }
-                            currentSchedule[slot.slotId] = { 
+                            if (currentSchedule[slot.slotId]) {
+                                throw "SLOT_ALREADY_TAKEN";
+                            }
+                            currentSchedule[slot.slotId] = {
                                 name: currentUser.name, email: currentUser.email, 
                                 className: finalClass, ownerEmail: currentUser.email 
                             };
@@ -650,6 +733,7 @@
                     
                 } catch (error) {
                     if (error === "SLOT_ALREADY_TAKEN") showAlert("慢了一步！你選的時段中，有部分已被別人搶走囉，請重新選擇。");
+                    else if (error === "SLOT_LOCKED") showAlert("🔒 你選的時段中包含已被鎖定的格子，無法預約。");
                     else if (error === "CART_NOT_FOUND") showAlert("找不到該設備，可能已被管理員刪除。");
                     else showAlert("預約發生錯誤，請稍後檢查網路連線再試。");
                     setBookingModal({ isOpen: false, dayIdx: null, periodId: null, existingBooking: null, isEditing: false, isBatch: false });
@@ -1314,10 +1398,20 @@
                                                             const bookingInfo = cartData[selectedCart]?.schedule?.[slotId];
                                                             const isMyBooking = bookingInfo && bookingInfo.ownerEmail === currentUser.email;
                                                             const isSelectedBatch = batchSelection.some(s => s.slotId === slotId);
+                                                            const slotLock = getLockForSlot(selectedCart, selectedWeek, dayIdx, period.id);
 
                                                             return (
                                                                 <td key={dayIdx} className="p-2 align-middle">
-                                                                    {bookingInfo ? (
+                                                                    {slotLock ? (
+                                                                        <div
+                                                                            onClick={() => showAlert(`🔒 此時段已被鎖定\n\n名稱：${slotLock.name}\n期間：第 ${slotLock.startWeek} - ${slotLock.startWeek + slotLock.weeks - 1} 週`)}
+                                                                            title={`${slotLock.name} (第 ${slotLock.startWeek}-${slotLock.startWeek + slotLock.weeks - 1} 週)`}
+                                                                            className="w-full h-[72px] rounded-2xl flex flex-col items-center justify-center p-2 bg-duo-red/10 border-2 border-duo-red text-duo-red cursor-not-allowed"
+                                                                        >
+                                                                            <i className="fa-solid fa-lock text-base mb-1"></i>
+                                                                            <span className="font-extrabold text-xs truncate w-full text-center leading-tight">{slotLock.name}</span>
+                                                                        </div>
+                                                                    ) : bookingInfo ? (
                                                                         <div onClick={() => (!isBatchMode && (isMyBooking || isAdmin)) && handleSlotClick(dayIdx, period.id, bookingInfo)}
                                                                             className={`w-full h-[72px] rounded-2xl flex flex-col items-center justify-center p-2 transition-all ${
                                                                                 isBatchMode ? 'bg-gray-100 text-gray-400 border-2 border-duo-grayBorder opacity-50 cursor-not-allowed' :
@@ -1486,6 +1580,49 @@
                                                         </form>
                                                     </div>
 
+                                                    <h3 className="text-2xl font-extrabold text-duo-text mb-6 border-b-2 border-duo-grayBorder pb-4"><i className="fa-solid fa-lock text-duo-red mr-2"></i> Recurring Locks</h3>
+                                                    <div className="bg-duo-grayLight border-2 border-duo-grayBorder rounded-[2rem] p-6 mb-8">
+                                                        <p className="text-sm font-bold text-gray-500 mb-4">設定每週固定鎖定的時段（例如：每週三 P3 會議室固定使用）。被鎖定的格子老師與管理員皆無法預約。</p>
+                                                        <button onClick={() => setLockModal({ isOpen: true, lockId: null, data: null })} className="w-full mb-4 bg-duo-blue text-white font-extrabold uppercase py-3 rounded-2xl shadow-duo-blue active:shadow-none active:translate-y-[4px] transition-all tracking-wider">
+                                                            <i className="fa-solid fa-plus mr-2"></i> 新增鎖定
+                                                        </button>
+                                                        {recurringLocks.length === 0 ? (
+                                                            <div className="bg-white rounded-2xl border-2 border-dashed border-duo-grayBorder p-6 text-center text-sm font-bold text-gray-400">
+                                                                尚未設定任何鎖定
+                                                            </div>
+                                                        ) : (
+                                                            <div className="space-y-3">
+                                                                {recurringLocks.map(lock => {
+                                                                    const dayName = currentDays[lock.dayIdx] || `Day ${lock.dayIdx}`;
+                                                                    const periodInfo = periods.find(p => String(p.id) === String(lock.periodId));
+                                                                    const endWeek = Number(lock.startWeek) + Number(lock.weeks) - 1;
+                                                                    return (
+                                                                        <div key={lock.id} className="bg-white border-2 border-duo-grayBorder rounded-2xl p-4 flex flex-wrap items-center justify-between gap-3">
+                                                                            <div className="flex-1 min-w-0">
+                                                                                <div className="flex items-center gap-2 mb-1">
+                                                                                    <i className="fa-solid fa-lock text-duo-red"></i>
+                                                                                    <span className="font-extrabold text-duo-text truncate">{lock.name}</span>
+                                                                                </div>
+                                                                                <div className="text-xs font-bold text-gray-500">
+                                                                                    <span className="bg-blue-50 text-duo-blue px-2 py-0.5 rounded-md mr-2">{lock.cartName}</span>
+                                                                                    {dayName} · {periodInfo ? periodInfo.name : `P${lock.periodId}`} · 第 {lock.startWeek}-{endWeek} 週（{lock.weeks} 週）
+                                                                                </div>
+                                                                            </div>
+                                                                            <div className="flex gap-2">
+                                                                                <button onClick={() => setLockModal({ isOpen: true, lockId: lock.id, data: lock })} className="px-3 py-2 bg-white border-2 border-duo-grayBorder text-duo-blue font-extrabold rounded-xl shadow-duo-gray active:shadow-none active:translate-y-[2px] text-xs">
+                                                                                    <i className="fa-solid fa-pen"></i>
+                                                                                </button>
+                                                                                <button onClick={() => deleteLock(lock.id)} className="px-3 py-2 bg-white border-2 border-duo-grayBorder text-duo-red font-extrabold rounded-xl shadow-duo-gray active:shadow-none active:translate-y-[2px] text-xs">
+                                                                                    <i className="fa-solid fa-trash"></i>
+                                                                                </button>
+                                                                            </div>
+                                                                        </div>
+                                                                    );
+                                                                })}
+                                                            </div>
+                                                        )}
+                                                    </div>
+
                                                     <h3 className="text-2xl font-extrabold text-duo-red mb-6 border-b-2 border-duo-grayBorder pb-4"><i className="fa-solid fa-skull mr-2"></i> Danger Zone</h3>
                                                     <div className="bg-red-50 border-2 border-red-200 rounded-[2rem] p-6">
                                                         <p className="text-sm font-bold text-duo-red mb-4">Click below to wipe all booking records in the system. Use at the start of a new semester. Cannot be undone!</p>
@@ -1576,11 +1713,16 @@
                     }
                     
                     const booking = cartData[cartName]?.schedule?.[`w${selectedWeek}_d${dayIdx}_p${period.id}`];
-                    
+                    const printLock = getLockForSlot(cartName, selectedWeek, dayIdx, period.id);
+
                     return (
                         <React.Fragment key={dayIdx}>
                             <td className="text-left align-top p-1.5 leading-tight">
-                                {booking ? (
+                                {printLock ? (
+                                    <div>
+                                        <strong className="text-[12px]">🔒 {printLock.name}</strong>
+                                    </div>
+                                ) : booking ? (
                                     <div>
                                         <span className="text-[10px] text-gray-600">{booking.className}</span><br/>
                                         <strong className="text-[12px]">{booking.name}</strong>
@@ -1736,6 +1878,61 @@
                                     <div className="flex gap-4 pt-4 border-t-2 border-duo-grayBorder">
                                         <button type="button" onClick={() => setEditCartModal({ isOpen: false, cartName: null, data: null })} className="flex-1 bg-white border-2 border-duo-grayBorder text-gray-400 font-extrabold uppercase py-3 rounded-2xl shadow-duo-gray active:shadow-none active:translate-y-[4px] transition-all">Cancel</button>
                                         <button type="submit" className="flex-[2] bg-duo-green text-white font-extrabold uppercase py-3 rounded-2xl shadow-duo-green active:shadow-none active:translate-y-[4px] transition-all">Save</button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    )}
+
+                    {lockModal.isOpen && (
+                        <div className="fixed inset-0 bg-slate-900/60 flex items-center justify-center p-4 z-[60] overflow-y-auto no-print backdrop-blur-sm">
+                            <div className="bg-white rounded-[2rem] border-2 border-duo-grayBorder shadow-2xl w-full max-w-lg my-8 animate-[fadeIn_0.15s_ease-out] overflow-hidden">
+                                <div className="p-6 border-b-2 border-duo-grayBorder bg-duo-grayLight flex justify-between items-center">
+                                    <h3 className="font-extrabold text-xl text-duo-text"><i className="fa-solid fa-lock text-duo-red mr-2"></i>{lockModal.lockId ? '編輯鎖定' : '新增鎖定'}</h3>
+                                    <button onClick={() => setLockModal({ isOpen: false, lockId: null, data: null })} className="w-8 h-8 bg-white border-2 border-duo-grayBorder rounded-full text-gray-400 hover:text-duo-text transition-colors flex items-center justify-center"><i className="fa-solid fa-times"></i></button>
+                                </div>
+                                <form onSubmit={saveLock} className="p-6 space-y-5">
+                                    <div>
+                                        <label className="block text-xs font-extrabold text-gray-400 uppercase tracking-wider mb-1">名稱</label>
+                                        <input required name="name" defaultValue={lockModal.data?.name || ''} placeholder="例如：校務會議" className="w-full px-4 py-3 bg-white border-2 border-duo-grayBorder rounded-xl focus:border-duo-blue outline-none font-bold" />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-extrabold text-gray-400 uppercase tracking-wider mb-1">Cart</label>
+                                        <select required name="cartName" defaultValue={lockModal.data?.cartName || ''} className="w-full px-4 py-3 bg-white border-2 border-duo-grayBorder rounded-xl focus:border-duo-blue outline-none font-bold">
+                                            <option value="">-- 請選擇 --</option>
+                                            {sortedAllCarts.map(([name]) => <option key={name} value={name}>{name}</option>)}
+                                        </select>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="block text-xs font-extrabold text-gray-400 uppercase tracking-wider mb-1">星期</label>
+                                            <select required name="dayIdx" defaultValue={lockModal.data?.dayIdx ?? 0} className="w-full px-4 py-3 bg-white border-2 border-duo-grayBorder rounded-xl focus:border-duo-blue outline-none font-bold">
+                                                {currentDays.map((d, i) => <option key={d} value={i}>{d}</option>)}
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-extrabold text-gray-400 uppercase tracking-wider mb-1">節次</label>
+                                            <select required name="periodId" defaultValue={lockModal.data?.periodId ?? 1} className="w-full px-4 py-3 bg-white border-2 border-duo-grayBorder rounded-xl focus:border-duo-blue outline-none font-bold">
+                                                {periods.filter(p => p.id !== 'lunch').map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="block text-xs font-extrabold text-gray-400 uppercase tracking-wider mb-1">起始週</label>
+                                            <input required type="number" name="startWeek" min="1" max={semesterConfig.totalWeeks} defaultValue={lockModal.data?.startWeek || currentRealWeek || 1} className="w-full px-4 py-3 bg-white border-2 border-duo-grayBorder rounded-xl focus:border-duo-blue outline-none font-bold" />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-extrabold text-gray-400 uppercase tracking-wider mb-1">持續幾週</label>
+                                            <input required type="number" name="weeks" min="1" max={semesterConfig.totalWeeks} defaultValue={lockModal.data?.weeks || 1} className="w-full px-4 py-3 bg-white border-2 border-duo-grayBorder rounded-xl focus:border-duo-blue outline-none font-bold" />
+                                        </div>
+                                    </div>
+                                    <div className="bg-red-50 border-2 border-red-100 rounded-xl p-3 text-xs font-bold text-duo-red">
+                                        <i className="fa-solid fa-triangle-exclamation mr-1"></i> 儲存後，該時段內現有的預約將被覆蓋移除。
+                                    </div>
+                                    <div className="flex gap-4 pt-4 border-t-2 border-duo-grayBorder">
+                                        <button type="button" onClick={() => setLockModal({ isOpen: false, lockId: null, data: null })} className="flex-1 bg-white border-2 border-duo-grayBorder text-gray-400 font-extrabold uppercase py-3 rounded-2xl shadow-duo-gray active:shadow-none active:translate-y-[4px] transition-all">取消</button>
+                                        <button type="submit" className="flex-[2] bg-duo-green text-white font-extrabold uppercase py-3 rounded-2xl shadow-duo-green active:shadow-none active:translate-y-[4px] transition-all">儲存</button>
                                     </div>
                                 </form>
                             </div>
