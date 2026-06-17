@@ -42,7 +42,7 @@
     <!-- 引入 React 與 ReactDOM -->
     <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone@7.24.7/babel.min.js"></script>
 
     <style>
         @media print {
@@ -59,6 +59,14 @@
         }
         .hide-scrollbar::-webkit-scrollbar { display: none; }
         .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        @media (max-width: 640px) {
+            body { background: #f7f8fa; }
+            .ios-mobile-shell { background: #f7f8fa !important; }
+            .ios-mobile-header { border-color: #e5e7eb !important; box-shadow: 0 8px 24px rgba(15, 23, 42, 0.04); }
+            .ios-mobile-panel { border-color: #e5e7eb !important; border-radius: 24px !important; box-shadow: 0 12px 28px rgba(15, 23, 42, 0.06) !important; }
+            .ios-mobile-day-card { border: 1px solid #e5e7eb !important; border-radius: 22px !important; box-shadow: 0 10px 24px rgba(15, 23, 42, 0.05); }
+            .ios-mobile-day-header { background: #ffffff !important; border-color: #e5e7eb !important; }
+        }
     </style>      
 </head>
 <body class="bg-white font-sans text-duo-text selection:bg-duo-green selection:text-white">
@@ -160,8 +168,8 @@
             const [addUserForm, setAddUserForm] = useState({ name: '', email: '', classType: '1A', customClass: '' });
 
             const [bookingModal, setBookingModal] = useState({ isOpen: false, dayIdx: null, periodId: null, existingBooking: null, isEditing: false, isBatch: false, isPast: false });
-            const [bookForm, setBookForm] = useState({ classType: '', customClass: '' });
-            const [editBookForm, setEditBookForm] = useState({ name: '', email: '', classType: '', customClass: '' });
+            const [bookForm, setBookForm] = useState({ name: '', subject: '', quantity: 1 });
+            const [editBookForm, setEditBookForm] = useState({ name: '', email: '', subject: '', quantity: 1 });
             const [editCartModal, setEditCartModal] = useState({ isOpen: false, cartName: null, data: null });
             const [printSelection, setPrintSelection] = useState([]);
 
@@ -462,6 +470,89 @@
                 return `${date.getMonth() + 1}/${date.getDate()}`;
             };
 
+            const getSafeQuantity = (value, fallback = 1) => {
+                const parsed = Number(value);
+                if (!Number.isFinite(parsed)) return fallback;
+                return Math.max(1, Math.floor(parsed));
+            };
+
+            const getBookingQuantity = (booking) => getSafeQuantity(booking?.quantity, 1);
+
+            const getCartCapacity = (cartOrData) => {
+                const data = typeof cartOrData === 'string' ? cartData[cartOrData] : cartOrData;
+                return getSafeQuantity(data?.capacity, 1);
+            };
+
+            const normalizeSlotBookings = (slotValue) => {
+                if (!slotValue) return [];
+
+                if (Array.isArray(slotValue.bookings)) {
+                    return slotValue.bookings
+                        .filter(Boolean)
+                        .map((booking, index) => ({
+                            ...booking,
+                            id: booking.id || `legacy_${index}`,
+                            quantity: getBookingQuantity(booking)
+                        }));
+                }
+
+                return [{
+                    ...slotValue,
+                    id: slotValue.id || 'legacy',
+                    quantity: getBookingQuantity(slotValue)
+                }];
+            };
+
+            const getSlotUsedQuantity = (slotValue) =>
+                normalizeSlotBookings(slotValue).reduce((total, booking) => total + getBookingQuantity(booking), 0);
+
+            const getSlotRemainingQuantity = (cartName, slotId, scheduleOverride = null) => {
+                const cart = cartData[cartName] || {};
+                const schedule = scheduleOverride || cart.schedule || {};
+                return Math.max(0, getCartCapacity(cart) - getSlotUsedQuantity(schedule[slotId]));
+            };
+
+            const makeBookingId = () => `booking_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+
+            const setSlotBookings = (schedule, slotId, bookings) => {
+                const cleanedBookings = bookings
+                    .filter(Boolean)
+                    .map((booking) => ({
+                        id: booking.id || makeBookingId(),
+                        name: booking.name || '',
+                        email: booking.email || booking.ownerEmail || '',
+                        className: booking.className || '',
+                        ownerEmail: booking.ownerEmail || booking.email || '',
+                        quantity: getBookingQuantity(booking),
+                        createdAt: booking.createdAt || getTimestamp()
+                    }));
+
+                if (cleanedBookings.length === 0) {
+                    delete schedule[slotId];
+                } else {
+                    schedule[slotId] = { bookings: cleanedBookings };
+                }
+            };
+
+            const findBookingIndex = (bookings, bookingId) => {
+                const targetId = String(bookingId || 'legacy');
+                return bookings.findIndex((booking, index) => {
+                    const currentId = String(booking.id || (index === 0 ? 'legacy' : `legacy_${index}`));
+                    return currentId === targetId;
+                });
+            };
+
+            const getDefaultSubject = (user) => {
+                if (!user) return '';
+                return user.defaultClass === 'Other (Specify)' ? (user.customClass || '') : (user.defaultClass || '');
+            };
+
+            const createDefaultBookForm = (quantity) => ({
+                name: currentUser?.name || '',
+                subject: getDefaultSubject(currentUser),
+                quantity: Math.max(1, getSafeQuantity(quantity, 1))
+            });
+
             const handleSaturdayToggle = async (e) => {
                 const newVal = e.target.checked;
                 setAllowSaturday(newVal); 
@@ -659,6 +750,7 @@
 
             const handleSlotClick = (dayIdx, periodId, existingBooking) => {
                 if (periodId === 'lunch') return;
+                const slotId = `w${selectedWeek}_d${dayIdx}_p${periodId}`;
 
                 const lock = getLockForSlot(selectedCart, selectedWeek, dayIdx, periodId);
                 if (lock) {
@@ -682,22 +774,118 @@
                         return;
                     }
 
+                    const remainingQuantity = getSlotRemainingQuantity(selectedCart, slotId);
+                    if (remainingQuantity <= 0) {
+                        showAlert("這個時段的設備數量已經被借滿了。");
+                        return;
+                    }
+
                     if (isBatchMode) {
-                        const slotId = `w${selectedWeek}_d${dayIdx}_p${periodId}`;
                         setBatchSelection(prev => 
                             prev.some(s => s.slotId === slotId) 
                                 ? prev.filter(s => s.slotId !== slotId) 
                                 : [...prev, { dayIdx, periodId, slotId }]
                         );
                     } else {
-                        setBookForm({ classType: currentUser.defaultClass, customClass: currentUser.customClass });
+                        setBookForm(createDefaultBookForm(remainingQuantity));
                         setBookingModal({ isOpen: true, dayIdx, periodId, existingBooking: null, isEditing: false, isBatch: false, isPast: false });
                     }
                 }
             };
 
-            const executeBookingTransaction = async (slotsToBook, finalClass) => {
+            const renderScheduleSlot = (dayIdx, period, isMobile = false) => {
+                if (period.id === 'lunch') {
+                    return (
+                        <div className={`${isMobile ? 'min-h-[56px]' : 'h-[72px]'} bg-gray-100 rounded-2xl flex items-center justify-center border-2 border-transparent`}>
+                            <span className="text-xs font-extrabold text-gray-400 uppercase tracking-widest"><i className="fa-solid fa-utensils mr-2"></i>Lunch</span>
+                        </div>
+                    );
+                }
+
+                const slotId = `w${selectedWeek}_d${dayIdx}_p${period.id}`;
+                const slotLock = getLockForSlot(selectedCart, selectedWeek, dayIdx, period.id);
+                const slotValue = cartData[selectedCart]?.schedule?.[slotId];
+                const slotBookings = normalizeSlotBookings(slotValue);
+                const capacity = getCartCapacity(cartData[selectedCart]);
+                const usedQuantity = getSlotUsedQuantity(slotValue);
+                const remainingQuantity = Math.max(0, capacity - usedQuantity);
+                const isSelectedBatch = batchSelection.some(s => s.slotId === slotId);
+
+                if (slotLock) {
+                    return (
+                        <div
+                            onClick={() => showAlert(`🔒 此時段已被鎖定\n\n名稱：${slotLock.name}\n期間：第 ${slotLock.startWeek} - ${slotLock.startWeek + slotLock.weeks - 1} 週`)}
+                            title={`${slotLock.name} (第 ${slotLock.startWeek}-${slotLock.startWeek + slotLock.weeks - 1} 週)`}
+                            className={`${isMobile ? 'min-h-[72px]' : 'min-h-[96px]'} w-full rounded-2xl flex flex-col items-center justify-center p-2 bg-duo-red/10 border-2 border-duo-red text-duo-red cursor-not-allowed`}
+                        >
+                            <i className="fa-solid fa-lock text-base mb-1"></i>
+                            <span className="font-extrabold text-xs truncate w-full text-center leading-tight">{slotLock.name}</span>
+                        </div>
+                    );
+                }
+
+                const canBookMore = remainingQuantity > 0;
+                const slotShellClass = isSelectedBatch
+                    ? 'bg-duo-green/20 border-duo-green text-duo-greenDark shadow-[inset_0_0_0_2px_#58cc02]'
+                    : canBookMore
+                        ? 'bg-white border-gray-200 text-duo-text hover:border-duo-green hover:bg-duo-green/5'
+                        : 'bg-gray-100 border-duo-grayBorder text-gray-400';
+
+                return (
+                    <div
+                        onClick={() => isBatchMode && canBookMore && handleSlotClick(dayIdx, period.id, null)}
+                        className={`${isMobile ? 'min-h-[104px]' : 'min-h-[112px]'} w-full rounded-2xl border-2 p-2 transition-all ${slotShellClass} ${isBatchMode && canBookMore ? 'cursor-pointer active:translate-y-[2px]' : ''}`}
+                    >
+                        <div className="flex items-center justify-between gap-2 mb-1.5">
+                            <span className={`text-[10px] font-extrabold uppercase tracking-wider ${canBookMore ? 'text-duo-greenDark' : 'text-gray-400'}`}>
+                                {canBookMore ? `${remainingQuantity} left` : 'Full'}
+                            </span>
+                            <span className="text-[10px] font-extrabold text-gray-400">{usedQuantity}/{capacity}</span>
+                        </div>
+
+                        <div className="space-y-1">
+                            {slotBookings.map((booking, bookingIdx) => {
+                                const isMyBooking = booking.ownerEmail === currentUser.email;
+                                const canManageBooking = !isBatchMode && (isMyBooking || isAdmin);
+                                return (
+                                    <button
+                                        type="button"
+                                        key={booking.id || bookingIdx}
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            if (canManageBooking) handleSlotClick(dayIdx, period.id, booking);
+                                        }}
+                                        className={`w-full rounded-xl px-2 py-1.5 border text-left transition-all ${canManageBooking ? 'cursor-pointer active:translate-y-[2px]' : 'cursor-default'} ${isMyBooking ? 'bg-duo-blue text-white border-duo-blueDark shadow-[0_2px_0_0_#1899d6]' : 'bg-gray-50 text-gray-500 border-gray-200'}`}
+                                    >
+                                        <div className="flex items-center justify-between gap-2">
+                                            <span className="font-extrabold text-[11px] truncate">{booking.name}</span>
+                                            <span className={`text-[10px] font-extrabold shrink-0 rounded-md px-1.5 py-0.5 ${isMyBooking ? 'bg-white/20 text-white' : 'bg-white text-gray-500 border border-gray-200'}`}>x{getBookingQuantity(booking)}</span>
+                                        </div>
+                                        <div className={`text-[10px] font-bold truncate ${isMyBooking ? 'text-white/80' : 'text-gray-400'}`}>{booking.className}</div>
+                                    </button>
+                                );
+                            })}
+                        </div>
+
+                        {canBookMore && (
+                            <button
+                                type="button"
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleSlotClick(dayIdx, period.id, null);
+                                }}
+                                className={`mt-2 w-full rounded-xl border-2 border-dashed px-2 py-2 text-[11px] font-extrabold uppercase tracking-wider transition-all ${isSelectedBatch ? 'border-duo-green bg-white/70 text-duo-greenDark' : 'border-gray-300 text-gray-400 hover:border-duo-green hover:text-duo-green'}`}
+                            >
+                                {isBatchMode ? (isSelectedBatch ? <><i className="fa-solid fa-check mr-1"></i> Selected</> : `Select (${remainingQuantity})`) : `Book (${remainingQuantity})`}
+                            </button>
+                        )}
+                    </div>
+                );
+            };
+
+            const executeBookingTransaction = async (slotsToBook, bookingName, finalSubject, requestedQuantity) => {
                 const cartRef = dbRefs.getDocRef('carts', selectedCart);
+                const quantity = getSafeQuantity(requestedQuantity, 1);
 
                 try {
                     await dbRefs.fb.runTransaction(dbRefs.db, async (transaction) => {
@@ -706,25 +894,32 @@
 
                         const currentData = cartDoc.data();
                         const currentSchedule = currentData.schedule || {};
+                        const capacity = getSafeQuantity(currentData.capacity, 1);
 
                         for (const slot of slotsToBook) {
                             if (getLockForSlot(selectedCart, selectedWeek, slot.dayIdx, slot.periodId)) {
                                 throw "SLOT_LOCKED";
                             }
-                            if (currentSchedule[slot.slotId]) {
-                                throw "SLOT_ALREADY_TAKEN";
+                            const slotBookings = normalizeSlotBookings(currentSchedule[slot.slotId]);
+                            const usedQuantity = slotBookings.reduce((total, booking) => total + getBookingQuantity(booking), 0);
+                            if (usedQuantity + quantity > capacity) {
+                                throw "INSUFFICIENT_QUANTITY";
                             }
-                            currentSchedule[slot.slotId] = {
-                                name: currentUser.name, email: currentUser.email, 
-                                className: finalClass, ownerEmail: currentUser.email 
-                            };
+                            slotBookings.push({
+                                id: makeBookingId(),
+                                name: bookingName, email: currentUser.email, 
+                                className: finalSubject, ownerEmail: currentUser.email,
+                                quantity,
+                                createdAt: getTimestamp()
+                            });
+                            setSlotBookings(currentSchedule, slot.slotId, slotBookings);
                         }
                         transaction.update(cartRef, { schedule: currentSchedule });
                     });
 
                     const details = slotsToBook.length === 1 
-                        ? `Week ${selectedWeek} ${currentDays[slotsToBook[0].dayIdx]} P${slotsToBook[0].periodId} (${finalClass})`
-                        : `Batch booked ${slotsToBook.length} slots for Week ${selectedWeek} (${finalClass})`;
+                        ? `Week ${selectedWeek} ${currentDays[slotsToBook[0].dayIdx]} P${slotsToBook[0].periodId} (${finalSubject}, ${quantity} devices)`
+                        : `Batch booked ${slotsToBook.length} slots for Week ${selectedWeek} (${finalSubject}, ${quantity} devices each)`;
                     
                     addLog("Add Booking", selectedCart, details);
                     setBookingModal({ isOpen: false, dayIdx: null, periodId: null, existingBooking: null, isEditing: false, isBatch: false });
@@ -732,7 +927,7 @@
                     setIsBatchMode(false);
                     
                 } catch (error) {
-                    if (error === "SLOT_ALREADY_TAKEN") showAlert("慢了一步！你選的時段中，有部分已被別人搶走囉，請重新選擇。");
+                    if (error === "INSUFFICIENT_QUANTITY") showAlert("可借數量不足！你選的數量超過其中一個時段的剩餘台數，請調整數量後再試。");
                     else if (error === "SLOT_LOCKED") showAlert("🔒 你選的時段中包含已被鎖定的格子，無法預約。");
                     else if (error === "CART_NOT_FOUND") showAlert("找不到該設備，可能已被管理員刪除。");
                     else showAlert("預約發生錯誤，請稍後檢查網路連線再試。");
@@ -741,21 +936,40 @@
             };
 
             const checkConflictsAndSubmit = async () => {
-                const finalClass = bookForm.classType === 'Other (Specify)' ? bookForm.customClass : bookForm.classType;
+                const bookingName = bookForm.name.trim();
+                const finalSubject = bookForm.subject.trim();
+                const requestedQuantity = getSafeQuantity(bookForm.quantity, 1);
                 const slotsToBook = bookingModal.isBatch ? batchSelection : [{ dayIdx: bookingModal.dayIdx, periodId: bookingModal.periodId, slotId: `w${selectedWeek}_d${bookingModal.dayIdx}_p${bookingModal.periodId}` }];
+
+                if (!bookingName) {
+                    showAlert("Please enter a name.");
+                    return;
+                }
+
+                if (!finalSubject) {
+                    showAlert("Please enter a subject.");
+                    return;
+                }
+
+                const insufficientSlot = slotsToBook.find(slot => getSlotRemainingQuantity(selectedCart, slot.slotId) < requestedQuantity);
+                if (insufficientSlot) {
+                    const remaining = getSlotRemainingQuantity(selectedCart, insufficientSlot.slotId);
+                    showAlert(`這個時段只剩 ${remaining} 台可借，請調整借用數量。`);
+                    return;
+                }
                 
                 const conflictingSlots = slotsToBook.filter(slot => {
                     return Object.entries(cartData).some(([cName, cData]) => {
-                        return cName !== selectedCart && cData.schedule && cData.schedule[slot.slotId]?.className === finalClass;
+                        return cName !== selectedCart && normalizeSlotBookings(cData.schedule?.[slot.slotId]).some(booking => booking.className === finalSubject);
                     });
                 });
 
                 if (conflictingSlots.length > 0) {
-                    showConfirm(`[Duplicate Booking Warning]\nClass "${finalClass}" has already reserved other equipment during this time slot.\nAre you sure you want to proceed with this additional booking?`, () => {
-                        executeBookingTransaction(slotsToBook, finalClass);
+                    showConfirm(`[Duplicate Booking Warning]\nSubject "${finalSubject}" has already reserved other equipment during this time slot.\nAre you sure you want to proceed with this additional booking?`, () => {
+                        executeBookingTransaction(slotsToBook, bookingName, finalSubject, requestedQuantity);
                     });
                 } else {
-                    executeBookingTransaction(slotsToBook, finalClass);
+                    executeBookingTransaction(slotsToBook, bookingName, finalSubject, requestedQuantity);
                 }
             };
 
@@ -777,14 +991,19 @@
                         
                         const currentSchedule = cartDoc.data().schedule || {};
                         if (!currentSchedule[slotId]) throw "ALREADY_CANCELLED";
+                        const slotBookings = normalizeSlotBookings(currentSchedule[slotId]);
+                        const bookingIndex = findBookingIndex(slotBookings, bookingModal.existingBooking?.id);
+                        if (bookingIndex === -1) throw "ALREADY_CANCELLED";
+                        const targetBooking = slotBookings[bookingIndex];
                         
                         // 非管理員只能取消自己的預約
-                        if (!isAdmin && currentSchedule[slotId].ownerEmail !== currentUser.email) {
+                        if (!isAdmin && targetBooking.ownerEmail !== currentUser.email) {
                             throw "NOT_OWNER";
                         }
                         
-                        cancelledName = currentSchedule[slotId].name;
-                        delete currentSchedule[slotId];
+                        cancelledName = `${targetBooking.name} (${getBookingQuantity(targetBooking)} devices)`;
+                        slotBookings.splice(bookingIndex, 1);
+                        setSlotBookings(currentSchedule, slotId, slotBookings);
                         transaction.update(cartRef, { schedule: currentSchedule });
                     });
 
@@ -802,19 +1021,30 @@
 
             const handleEditClick = () => {
                 const existing = bookingModal.existingBooking;
-                const isStandardClass = classOptions.includes(existing.className);
                 setEditBookForm({
                     name: existing.name, email: existing.email,
-                    classType: isStandardClass ? existing.className : 'Other (Specify)',
-                    customClass: isStandardClass ? '' : existing.className
+                    subject: existing.className,
+                    quantity: getBookingQuantity(existing)
                 });
                 setBookingModal(prev => ({ ...prev, isEditing: true }));
             };
 
             const updateBooking = async () => {
                 const slotId = `w${selectedWeek}_d${bookingModal.dayIdx}_p${bookingModal.periodId}`;
-                const finalClass = editBookForm.classType === 'Other (Specify)' ? editBookForm.customClass : editBookForm.classType;
+                const finalSubject = editBookForm.subject.trim();
+                const updatedName = editBookForm.name.trim();
+                const requestedQuantity = getSafeQuantity(editBookForm.quantity, 1);
                 const cartRef = dbRefs.getDocRef('carts', selectedCart);
+
+                if (!updatedName) {
+                    showAlert("Please enter a name.");
+                    return;
+                }
+
+                if (!finalSubject) {
+                    showAlert("Please enter a subject.");
+                    return;
+                }
                 
                 try {
                     await dbRefs.fb.runTransaction(dbRefs.db, async (transaction) => {
@@ -823,26 +1053,43 @@
 
                         const currentData = cartDoc.data();
                         const currentSchedule = currentData.schedule || {};
+                        const capacity = getSafeQuantity(currentData.capacity, 1);
 
                         if (!currentSchedule[slotId]) {
                             throw "SLOT_NOT_FOUND"; 
                         }
-                        
-                        currentSchedule[slotId] = { 
-                            ...currentSchedule[slotId],
-                            name: editBookForm.name, 
-                            email: editBookForm.email, 
-                            className: finalClass, 
-                            ownerEmail: editBookForm.email 
+                        const slotBookings = normalizeSlotBookings(currentSchedule[slotId]);
+                        const bookingIndex = findBookingIndex(slotBookings, bookingModal.existingBooking?.id);
+                        if (bookingIndex === -1) throw "SLOT_NOT_FOUND";
+                        if (!isAdmin && slotBookings[bookingIndex].ownerEmail !== currentUser.email) {
+                            throw "NOT_OWNER";
+                        }
+
+                        const originalQuantity = getBookingQuantity(slotBookings[bookingIndex]);
+                        const usedWithoutThisBooking = slotBookings.reduce((total, booking) => total + getBookingQuantity(booking), 0) - originalQuantity;
+                        if (usedWithoutThisBooking + requestedQuantity > capacity) {
+                            throw "INSUFFICIENT_QUANTITY";
+                        }
+
+                        slotBookings[bookingIndex] = { 
+                            ...slotBookings[bookingIndex],
+                            name: updatedName, 
+                            email: isAdmin ? editBookForm.email : slotBookings[bookingIndex].email, 
+                            className: finalSubject, 
+                            ownerEmail: isAdmin ? editBookForm.email : slotBookings[bookingIndex].ownerEmail,
+                            quantity: requestedQuantity
                         };
+                        setSlotBookings(currentSchedule, slotId, slotBookings);
                         
                         transaction.update(cartRef, { schedule: currentSchedule });
                     });
 
-                    addLog("Admin Edit", selectedCart, `Week ${selectedWeek} ${currentDays[bookingModal.dayIdx]} P${bookingModal.periodId} (Updated: ${editBookForm.name})`);
+                    addLog(isAdmin ? "Admin Edit" : "Edit Booking", selectedCart, `Week ${selectedWeek} ${currentDays[bookingModal.dayIdx]} P${bookingModal.periodId} (Updated: ${updatedName}, ${requestedQuantity} devices)`);
                     setBookingModal({ isOpen: false, dayIdx: null, periodId: null, existingBooking: null, isEditing: false, isBatch: false });
                 } catch (error) {
                     if (error === "SLOT_NOT_FOUND") showAlert("這筆預約似乎已經被使用者手動取消了！請重新確認設備狀態。");
+                    else if (error === "INSUFFICIENT_QUANTITY") showAlert("更新後的數量超過此時段可用台數。");
+                    else if (error === "NOT_OWNER") showAlert("你只能修改自己的預約。");
                     else if (error === "CART_NOT_FOUND") showAlert("找不到該設備。");
                     else showAlert("更新失敗，請稍後再試。");
                     setBookingModal({ isOpen: false, dayIdx: null, periodId: null, existingBooking: null, isEditing: false, isBatch: false });
@@ -920,13 +1167,23 @@
                 
                 Object.entries(cartData).forEach(([cartName, data]) => {
                     if (data.schedule) {
-                        Object.entries(data.schedule).forEach(([slotId, bookingInfo]) => {
-                            if (bookingInfo.ownerEmail === currentUser.email) {
+                        Object.entries(data.schedule).forEach(([slotId, slotValue]) => {
+                            normalizeSlotBookings(slotValue).forEach((bookingInfo) => {
+                                if (bookingInfo.ownerEmail !== currentUser.email) return;
                                 const match = slotId.match(/w(\d+)_d(\d+)_p(\w+)/);
                                 if (match) {
-                                    myBookings.push({ cartName, week: parseInt(match[1]), dayIdx: parseInt(match[2]), periodId: match[3], slotId, className: bookingInfo.className });
+                                    myBookings.push({
+                                        cartName,
+                                        week: parseInt(match[1]),
+                                        dayIdx: parseInt(match[2]),
+                                        periodId: match[3],
+                                        slotId,
+                                        bookingId: bookingInfo.id,
+                                        className: bookingInfo.className,
+                                        quantity: getBookingQuantity(bookingInfo)
+                                    });
                                 }
-                            }
+                            });
                         });
                     }
                 });
@@ -940,7 +1197,7 @@
             }, [cartData, currentUser]);
 
             // 🔧 FIX [衝突]: cancelBookingFromList 也改用 runTransaction
-            const cancelBookingFromList = (cartName, slotId, className) => {
+            const cancelBookingFromList = (cartName, slotId, className, bookingId) => {
                 showConfirm(`Are you sure you want to cancel this booking for ${cartName}?`, async () => {
                     const cartRef = dbRefs.getDocRef('carts', cartName);
                     
@@ -951,12 +1208,19 @@
                             
                             const currentSchedule = cartDoc.data().schedule || {};
                             if (!currentSchedule[slotId]) throw "ALREADY_CANCELLED";
+                            const slotBookings = normalizeSlotBookings(currentSchedule[slotId]);
+                            const bookingIndex = bookingId
+                                ? findBookingIndex(slotBookings, bookingId)
+                                : slotBookings.findIndex(booking => booking.ownerEmail === currentUser.email && booking.className === className);
+                            if (bookingIndex === -1) throw "ALREADY_CANCELLED";
+                            const targetBooking = slotBookings[bookingIndex];
                             
-                            if (!isAdmin && currentSchedule[slotId].ownerEmail !== currentUser.email) {
+                            if (!isAdmin && targetBooking.ownerEmail !== currentUser.email) {
                                 throw "NOT_OWNER";
                             }
                             
-                            delete currentSchedule[slotId];
+                            slotBookings.splice(bookingIndex, 1);
+                            setSlotBookings(currentSchedule, slotId, slotBookings);
                             transaction.update(cartRef, { schedule: currentSchedule });
                         });
                         
@@ -980,6 +1244,15 @@
                 [allMyBookings, currentRealWeek, currentRealDayIdx]
             );
             const displayedBookings = myBookingsTab === 'upcoming' ? upcomingBookings : historyBookings;
+            const selectedCartCapacity = selectedCart ? getCartCapacity(cartData[selectedCart]) : 1;
+            const bookingModalSlotId = bookingModal.dayIdx !== null && bookingModal.periodId !== null
+                ? `w${selectedWeek}_d${bookingModal.dayIdx}_p${bookingModal.periodId}`
+                : null;
+            const bookingModalAvailableQuantity = bookingModal.isBatch
+                ? (batchSelection.length > 0 ? Math.min(...batchSelection.map(slot => getSlotRemainingQuantity(selectedCart, slot.slotId))) : selectedCartCapacity)
+                : bookingModalSlotId
+                    ? getSlotRemainingQuantity(selectedCart, bookingModalSlotId) + (bookingModal.existingBooking ? getBookingQuantity(bookingModal.existingBooking) : 0)
+                    : selectedCartCapacity;
 
             if (firebaseReady === 'auth-error') {
                 return (
@@ -990,7 +1263,7 @@
                             <p className="text-duo-text/80 mb-6 text-left leading-relaxed font-bold">
                                 Authentication is not properly configured in your Firebase console.<br/><br/>
                                 <span className="text-duo-blue uppercase tracking-wider text-sm">How to fix:</span><br/>
-                                1. Go to Firebase Console -> <strong>Authentication</strong>.<br/>
+                                1. Go to Firebase Console &rarr; <strong>Authentication</strong>.<br/>
                                 2. Click <strong>Sign-in method</strong>.<br/>
                                 3. Enable <strong>Google</strong> provider.<br/>
                                 4. Save and refresh this page.
@@ -1048,31 +1321,32 @@
             }
 
             return (
-                <div className="min-h-screen bg-[#ffffff]">
-                    <header className="bg-white border-b-2 border-duo-grayBorder sticky top-0 z-50 no-print">
-                        <div className="max-w-7xl mx-auto px-4 py-4 flex flex-wrap justify-between items-center gap-4">
+                <div className="min-h-screen bg-[#ffffff] ios-mobile-shell">
+                    <header className="bg-white border-b-2 border-duo-grayBorder sticky top-0 z-50 no-print ios-mobile-header">
+                        <div className="max-w-7xl mx-auto px-4 py-3 sm:py-4 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 sm:gap-4">
                             <div className="flex items-center space-x-3 cursor-pointer group" onClick={goHome}>
                                 <i className="fa-solid fa-cube text-duo-green text-3xl group-hover:scale-110 transition-transform"></i>
+                                <h1 className="text-xl font-extrabold text-duo-green tracking-tight sm:hidden">IBSH Carts</h1>
                                 <h1 className="text-2xl font-extrabold text-duo-green tracking-tight hidden sm:block">IBSH Chromebook Carts Reservation</h1>
                             </div>
                             
-                            <div className="flex items-center gap-3">
-                                <button onClick={() => changeView('print')} className="px-4 py-2.5 bg-white border-2 border-duo-grayBorder text-gray-400 font-extrabold uppercase tracking-wider rounded-2xl shadow-[0_4px_0_0_#e5e5e5] hover:bg-gray-50 active:shadow-none active:translate-y-[4px] transition-all text-xs sm:text-sm">
+                            <div className="w-full sm:w-auto flex items-center gap-2 sm:gap-3 overflow-x-auto hide-scrollbar pb-1 sm:pb-0">
+                                <button onClick={() => changeView('print')} className="shrink-0 px-4 py-2.5 bg-white border-2 border-duo-grayBorder text-gray-400 font-extrabold uppercase tracking-wider rounded-2xl shadow-[0_4px_0_0_#e5e5e5] hover:bg-gray-50 active:shadow-none active:translate-y-[4px] transition-all text-xs sm:text-sm">
                                     <i className="fa-solid fa-print sm:mr-1"></i> <span className="hidden sm:inline">Print</span>
                                 </button>
 
-                                <button onClick={() => changeView('my-bookings')} className={`px-4 py-2.5 font-extrabold uppercase tracking-wider rounded-2xl transition-all text-xs sm:text-sm ${currentView === 'my-bookings' ? 'bg-duo-blue text-white shadow-[0_4px_0_0_#1899d6] active:shadow-none active:translate-y-[4px]' : 'bg-white border-2 border-duo-grayBorder text-duo-blue shadow-[0_4px_0_0_#e5e5e5] hover:bg-blue-50 active:shadow-none active:translate-y-[4px]'}`}>
+                                <button onClick={() => changeView('my-bookings')} className={`shrink-0 px-4 py-2.5 font-extrabold uppercase tracking-wider rounded-2xl transition-all text-xs sm:text-sm ${currentView === 'my-bookings' ? 'bg-duo-blue text-white shadow-[0_4px_0_0_#1899d6] active:shadow-none active:translate-y-[4px]' : 'bg-white border-2 border-duo-grayBorder text-duo-blue shadow-[0_4px_0_0_#e5e5e5] hover:bg-blue-50 active:shadow-none active:translate-y-[4px]'}`}>
                                     <i className="fa-solid fa-calendar-check sm:mr-1"></i> <span className="hidden sm:inline">My Bookings</span>
                                 </button>
 
                                 {isAdmin && (
-                                    <button onClick={() => { changeView('admin'); setAdminTab('carts'); }} className={`px-4 py-2.5 font-extrabold uppercase tracking-wider rounded-2xl transition-all text-xs sm:text-sm ${currentView === 'admin' ? 'bg-duo-text text-white shadow-[0_4px_0_0_#2b2b2b] active:shadow-none active:translate-y-[4px]' : 'bg-white border-2 border-duo-grayBorder text-duo-text shadow-[0_4px_0_0_#e5e5e5] hover:bg-gray-50 active:shadow-none active:translate-y-[4px]'}`}>
+                                    <button onClick={() => { changeView('admin'); setAdminTab('carts'); }} className={`shrink-0 px-4 py-2.5 font-extrabold uppercase tracking-wider rounded-2xl transition-all text-xs sm:text-sm ${currentView === 'admin' ? 'bg-duo-text text-white shadow-[0_4px_0_0_#2b2b2b] active:shadow-none active:translate-y-[4px]' : 'bg-white border-2 border-duo-grayBorder text-duo-text shadow-[0_4px_0_0_#e5e5e5] hover:bg-gray-50 active:shadow-none active:translate-y-[4px]'}`}>
                                         <i className="fa-solid fa-gear sm:mr-1"></i> <span className="hidden sm:inline">Admin</span>
                                     </button>
                                 )}
                                 
-                                <div className="flex items-center ml-2 border-2 border-duo-grayBorder rounded-2xl h-[44px] overflow-hidden bg-duo-grayLight">
-                                    <div className="px-4 font-extrabold text-duo-blue text-sm flex items-center h-full max-w-[120px] truncate">
+                                <div className="shrink-0 flex items-center sm:ml-2 border-2 border-duo-grayBorder rounded-2xl h-[44px] overflow-hidden bg-duo-grayLight">
+                                    <div className="px-3 sm:px-4 font-extrabold text-duo-blue text-sm flex items-center h-full max-w-[110px] sm:max-w-[120px] truncate">
                                         <i className={`fa-solid ${isAdmin ? 'fa-shield-halved text-duo-yellow' : 'fa-user'} mr-2`}></i>
                                         {currentUser.name}
                                     </div>
@@ -1084,11 +1358,11 @@
                         </div>
 
                         <div className="bg-duo-grayLight border-t-2 border-duo-grayBorder px-4 py-3">
-                            <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-4">
-                                <div className="flex items-center space-x-3">
+                            <div className="max-w-7xl mx-auto flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
+                                <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
                                     <span className="font-extrabold text-duo-text/60 uppercase tracking-wider text-sm">Week:</span>
-                                    <div className="relative">
-                                        <select value={selectedWeek} onChange={(e) => setSelectedWeek(Number(e.target.value))} className="appearance-none bg-white border-2 border-duo-grayBorder rounded-xl pl-4 pr-10 py-2 text-sm font-extrabold text-duo-blue outline-none cursor-pointer hover:bg-gray-50 transition-colors">
+                                    <div className="relative w-full sm:w-auto">
+                                        <select value={selectedWeek} onChange={(e) => setSelectedWeek(Number(e.target.value))} className="w-full appearance-none bg-white border-2 border-duo-grayBorder rounded-xl pl-4 pr-10 py-2 text-sm font-extrabold text-duo-blue outline-none cursor-pointer hover:bg-gray-50 transition-colors">
                                             {weeksArray.map(w => (
                                                 <option key={w} value={w}>Wk {w} ({getWeekDateRange(w, allowSaturday)})</option>
                                             ))}
@@ -1115,7 +1389,7 @@
                         </div>
                     </header>
 
-                    <main className="max-w-7xl mx-auto px-4 py-8 no-print">
+                    <main className="max-w-7xl mx-auto px-4 py-5 sm:py-8 no-print">
                         
                         {currentView === 'my-bookings' && (
                             <div className="animate-[fadeIn_0.3s_ease-out]">
@@ -1177,9 +1451,14 @@
                                                                             <span className="ml-3">{b.cartName}</span>
                                                                         </h3>
                                                                     </div>
-                                                                    <span className="bg-blue-50 text-duo-blue text-xs px-2.5 py-1 rounded-lg font-extrabold uppercase tracking-wider border-2 border-blue-100">
-                                                                        {b.className}
-                                                                    </span>
+                                                                    <div className="flex flex-col items-end gap-1">
+                                                                        <span className="bg-blue-50 text-duo-blue text-xs px-2.5 py-1 rounded-lg font-extrabold uppercase tracking-wider border-2 border-blue-100">
+                                                                            {b.className}
+                                                                        </span>
+                                                                        <span className="bg-duo-grayLight text-gray-500 text-[11px] px-2 py-0.5 rounded-md font-extrabold border border-duo-grayBorder">
+                                                                            x{b.quantity} devices
+                                                                        </span>
+                                                                    </div>
                                                                 </div>
 
                                                                 <div className="pl-2 space-y-2 mb-6">
@@ -1196,7 +1475,7 @@
                                                                 </div>
 
                                                                 {myBookingsTab === 'upcoming' ? (
-                                                                    <button onClick={() => cancelBookingFromList(b.cartName, b.slotId, b.className)} className="mt-auto w-full bg-white text-duo-red font-extrabold uppercase py-3 rounded-xl border-2 border-duo-grayBorder shadow-[0_4px_0_0_#e5e5e5] hover:bg-red-50 hover:border-red-200 active:shadow-none active:translate-y-[4px] transition-all flex items-center justify-center">
+                                                                    <button onClick={() => cancelBookingFromList(b.cartName, b.slotId, b.className, b.bookingId)} className="mt-auto w-full bg-white text-duo-red font-extrabold uppercase py-3 rounded-xl border-2 border-duo-grayBorder shadow-[0_4px_0_0_#e5e5e5] hover:bg-red-50 hover:border-red-200 active:shadow-none active:translate-y-[4px] transition-all flex items-center justify-center">
                                                                         <i className="fa-solid fa-trash-can mr-2"></i> Cancel
                                                                     </button>
                                                                 ) : (
@@ -1240,16 +1519,20 @@
                                                                     if (period.id === 'lunch') return <td key={dayIdx} className="p-2 align-middle"><div className="bg-gray-50 rounded-2xl h-[72px]"></div></td>;
                                                                     
                                                                     const slotId = `w${selectedWeek}_d${dayIdx}_p${period.id}`;
-                                                                    const myCartsThisSlot = Object.entries(cartData).filter(([cName, cData]) => cData.schedule && cData.schedule[slotId]?.ownerEmail === currentUser.email);
+                                                                    const myCartsThisSlot = Object.entries(cartData).flatMap(([cName, cData]) =>
+                                                                        normalizeSlotBookings(cData.schedule?.[slotId])
+                                                                            .filter(booking => booking.ownerEmail === currentUser.email)
+                                                                            .map(booking => ({ cartName: cName, booking }))
+                                                                    );
                                                                     
                                                                     return (
                                                                         <td key={dayIdx} className="p-2 align-middle text-center relative">
                                                                             {myCartsThisSlot.length > 0 ? (
                                                                                 <div className="flex flex-col gap-1">
-                                                                                    {myCartsThisSlot.map(([cName, cData]) => (
-                                                                                        <div key={cName} className="bg-duo-blue text-white rounded-xl p-2 shadow-[0_3px_0_0_#1899d6] flex flex-col justify-center items-center cursor-pointer hover:bg-[#1899d6] active:translate-y-[3px] active:shadow-none" onClick={() => cancelBookingFromList(cName, slotId, cData.schedule[slotId].className)}>
-                                                                                            <span className="font-extrabold text-xs truncate w-full">{cName}</span>
-                                                                                            <span className="text-[10px] bg-black/20 px-1.5 rounded-md truncate">{cData.schedule[slotId].className}</span>
+                                                                                    {myCartsThisSlot.map(({ cartName, booking }) => (
+                                                                                        <div key={`${cartName}_${booking.id}`} className="bg-duo-blue text-white rounded-xl p-2 shadow-[0_3px_0_0_#1899d6] flex flex-col justify-center items-center cursor-pointer hover:bg-[#1899d6] active:translate-y-[3px] active:shadow-none" onClick={() => cancelBookingFromList(cartName, slotId, booking.className, booking.id)}>
+                                                                                            <span className="font-extrabold text-xs truncate w-full">{cartName}</span>
+                                                                                            <span className="text-[10px] bg-black/20 px-1.5 rounded-md truncate">{booking.className} · x{getBookingQuantity(booking)}</span>
                                                                                         </div>
                                                                                     ))}
                                                                                 </div>
@@ -1275,11 +1558,11 @@
                             <div className="animate-[fadeIn_0.3s_ease-out]">
                                 <div className="mb-8 flex flex-col md:flex-row md:items-center justify-between gap-4 border-b-2 border-duo-grayBorder pb-6">
                                     <div className="flex-1">
-                                        <h2 className="text-3xl font-extrabold text-duo-text tracking-tight">Choose Equipment</h2>
+                                        <h2 className="text-2xl sm:text-3xl font-extrabold text-duo-text tracking-tight">Choose Equipment</h2>
                                     </div>
-                                    <div className="flex flex-wrap items-center gap-3">
+                                    <div className="w-full md:w-auto flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-3">
                                         
-                                        <div className="relative">
+                                        <div className="relative w-full sm:w-auto">
                                             <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none">
                                                 <i className="fa-solid fa-search text-gray-400"></i>
                                             </div>
@@ -1292,7 +1575,7 @@
                                             />
                                         </div>
 
-                                        <div className="flex gap-2 overflow-x-auto hide-scrollbar py-2 border-l-2 border-duo-grayBorder pl-3">
+                                        <div className="flex gap-2 overflow-x-auto hide-scrollbar py-2 sm:border-l-2 sm:border-duo-grayBorder sm:pl-3">
                                             {['All', 'Chromebook', 'iPad', 'PC Lab'].map(filter => (
                                                 <button key={filter} onClick={() => setActiveFilter(filter)} className={`px-5 py-2.5 rounded-2xl font-extrabold uppercase tracking-wider text-sm transition-all whitespace-nowrap ${activeFilter === filter ? 'bg-duo-blue/10 text-duo-blue border-2 border-duo-blue' : 'bg-white text-gray-400 border-2 border-duo-grayBorder hover:bg-gray-50'}`}>
                                                     {filter}
@@ -1300,8 +1583,8 @@
                                             ))}
                                         </div>
                                         
-                                        <div className="relative border-l-2 border-duo-grayBorder pl-3">
-                                            <select value={activeLocationFilter} onChange={e => setActiveLocationFilter(e.target.value)} className="appearance-none bg-white border-2 border-duo-grayBorder rounded-2xl pl-4 pr-10 py-2.5 font-extrabold text-gray-500 hover:text-duo-text outline-none cursor-pointer hover:bg-gray-50 transition-colors text-sm uppercase tracking-wider max-w-[200px] truncate">
+                                        <div className="relative w-full sm:w-auto sm:border-l-2 sm:border-duo-grayBorder sm:pl-3">
+                                            <select value={activeLocationFilter} onChange={e => setActiveLocationFilter(e.target.value)} className="w-full appearance-none bg-white border-2 border-duo-grayBorder rounded-2xl pl-4 pr-10 py-2.5 font-extrabold text-gray-500 hover:text-duo-text outline-none cursor-pointer hover:bg-gray-50 transition-colors text-sm uppercase tracking-wider sm:max-w-[200px] truncate">
                                                 {locations.map(loc => (
                                                     <option key={loc} value={loc}>{loc === 'All' ? '📍 All Locations' : loc}</option>
                                                 ))}
@@ -1333,12 +1616,12 @@
 
                         {currentView === 'schedule' && selectedCart && (
                             <div className="animate-[fadeIn_0.3s_ease-out]">
-                                <div className="mb-6 flex items-center justify-between">
-                                    <button onClick={() => { setSelectedCart(null); goBack(); setIsBatchMode(false); setBatchSelection([]); }} className="text-gray-400 font-extrabold uppercase tracking-wider hover:text-duo-text transition-colors flex items-center border-2 border-duo-grayBorder px-4 py-2 rounded-xl bg-white hover:bg-gray-50">
+                                <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                                    <button onClick={() => { setSelectedCart(null); goBack(); setIsBatchMode(false); setBatchSelection([]); }} className="w-full sm:w-auto justify-center text-gray-400 font-extrabold uppercase tracking-wider hover:text-duo-text transition-colors flex items-center border-2 border-duo-grayBorder px-4 py-2 rounded-xl bg-white hover:bg-gray-50">
                                         <i className="fa-solid fa-arrow-left mr-2"></i> Back
                                     </button>
                                     
-                                    <div className="flex items-center space-x-3 bg-white px-4 py-2 rounded-xl border-2 border-duo-grayBorder">
+                                    <div className="w-full sm:w-auto flex items-center justify-between sm:justify-start space-x-3 bg-white px-4 py-2 rounded-xl border-2 border-duo-grayBorder">
                                         <span className="text-sm font-extrabold text-duo-text uppercase tracking-wider">Batch Mode</span>
                                         <div className="relative cursor-pointer" onClick={() => { setIsBatchMode(!isBatchMode); setBatchSelection([]); }}>
                                             <div className={`block w-12 h-6 rounded-full border-2 transition-colors ${isBatchMode ? 'bg-duo-blue border-duo-blueDark' : 'bg-gray-200 border-gray-300'}`}></div>
@@ -1347,17 +1630,17 @@
                                     </div>
                                 </div>
 
-                                <div className="bg-white rounded-[2rem] border-2 border-duo-grayBorder shadow-duo-card overflow-hidden relative">
-                                    <div className="p-6 border-b-2 border-duo-grayBorder bg-duo-grayLight flex flex-wrap items-center gap-4">
+                                <div className="bg-white rounded-[2rem] border-2 border-duo-grayBorder shadow-duo-card overflow-hidden relative ios-mobile-panel">
+                                    <div className="p-4 sm:p-6 border-b-2 border-duo-grayBorder bg-duo-grayLight flex flex-wrap items-center gap-4">
                                         {getIcon(cartData[selectedCart]?.type)}
                                         <div>
-                                            <h2 className="text-3xl font-extrabold text-duo-text">{selectedCart}</h2>
+                                            <h2 className="text-2xl sm:text-3xl font-extrabold text-duo-text">{selectedCart}</h2>
                                             <p className="text-gray-500 font-bold mt-1"><i className="fa-solid fa-location-dot mr-1"></i> {cartData[selectedCart]?.location} • {cartData[selectedCart]?.capacity} Devices</p>
                                         </div>
                                     </div>
 
-                                    <div className="overflow-x-auto p-4 custom-scrollbar">
-                                        <table className="w-full min-w-[700px] border-separate border-spacing-2">
+                                    <div className="hidden md:block overflow-x-auto p-4 custom-scrollbar">
+                                        <table className="w-full min-w-[860px] border-separate border-spacing-2">
                                             <thead>
                                                 <tr>
                                                     <th className="p-2 w-32 sm:w-40 text-center font-extrabold text-gray-400 uppercase tracking-wider text-sm border-b-2 border-duo-grayBorder pb-4 align-bottom sticky left-0 bg-white z-20 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
@@ -1383,80 +1666,46 @@
                                                             </div>
                                                         </td>
                                                         
-                                                        {currentDays.map((day, dayIdx) => {
-                                                            if (period.id === 'lunch') {
-                                                                return (
-                                                                    <td key={dayIdx} className="p-2 align-middle">
-                                                                        <div className="bg-gray-100 rounded-2xl h-[72px] flex items-center justify-center border-2 border-transparent">
-                                                                            <span className="text-xs font-extrabold text-gray-400 uppercase tracking-widest"><i className="fa-solid fa-utensils mr-2"></i>Lunch</span>
-                                                                        </div>
-                                                                    </td>
-                                                                );
-                                                            }
-                                                            
-                                                            const slotId = `w${selectedWeek}_d${dayIdx}_p${period.id}`;
-                                                            const bookingInfo = cartData[selectedCart]?.schedule?.[slotId];
-                                                            const isMyBooking = bookingInfo && bookingInfo.ownerEmail === currentUser.email;
-                                                            const isSelectedBatch = batchSelection.some(s => s.slotId === slotId);
-                                                            const slotLock = getLockForSlot(selectedCart, selectedWeek, dayIdx, period.id);
-
-                                                            return (
-                                                                <td key={dayIdx} className="p-2 align-middle">
-                                                                    {slotLock ? (
-                                                                        <div
-                                                                            onClick={() => showAlert(`🔒 此時段已被鎖定\n\n名稱：${slotLock.name}\n期間：第 ${slotLock.startWeek} - ${slotLock.startWeek + slotLock.weeks - 1} 週`)}
-                                                                            title={`${slotLock.name} (第 ${slotLock.startWeek}-${slotLock.startWeek + slotLock.weeks - 1} 週)`}
-                                                                            className="w-full h-[72px] rounded-2xl flex flex-col items-center justify-center p-2 bg-duo-red/10 border-2 border-duo-red text-duo-red cursor-not-allowed"
-                                                                        >
-                                                                            <i className="fa-solid fa-lock text-base mb-1"></i>
-                                                                            <span className="font-extrabold text-xs truncate w-full text-center leading-tight">{slotLock.name}</span>
-                                                                        </div>
-                                                                    ) : bookingInfo ? (
-                                                                        <div onClick={() => (!isBatchMode && (isMyBooking || isAdmin)) && handleSlotClick(dayIdx, period.id, bookingInfo)}
-                                                                            className={`w-full h-[72px] rounded-2xl flex flex-col items-center justify-center p-2 transition-all ${
-                                                                                isBatchMode ? 'bg-gray-100 text-gray-400 border-2 border-duo-grayBorder opacity-50 cursor-not-allowed' :
-                                                                                isMyBooking || isAdmin
-                                                                                ? 'bg-duo-blue text-white shadow-[0_4px_0_0_#1899d6] cursor-pointer hover:bg-[#1899d6] active:shadow-none active:translate-y-[4px]'
-                                                                                : 'bg-gray-100 text-gray-400 border-2 border-duo-grayBorder cursor-not-allowed opacity-80'
-                                                                            }`}
-                                                                        >
-                                                                            <span className="font-extrabold text-sm truncate w-full text-center leading-tight">{bookingInfo.name}</span>
-                                                                            <span className="text-[11px] font-bold bg-black/10 px-2 py-0.5 rounded-full mt-1 truncate max-w-[90%]">{bookingInfo.className}</span>
-                                                                        </div>
-                                                                    ) : (
-                                                                        <div onClick={() => handleSlotClick(dayIdx, period.id, null)}
-                                                                            className={`w-full h-[72px] rounded-2xl flex flex-col items-center justify-center cursor-pointer transition-all group ${
-                                                                                isSelectedBatch
-                                                                                ? 'bg-duo-green/20 border-2 border-duo-green text-duo-greenDark shadow-[inset_0_0_0_2px_#58cc02]'
-                                                                                : 'bg-transparent border-2 border-dashed border-gray-300 text-gray-300 hover:bg-duo-green/10 hover:border-duo-green hover:text-duo-green'
-                                                                            }`}
-                                                                        >
-                                                                            {isSelectedBatch ? (
-                                                                                <i className="fa-solid fa-check text-2xl text-duo-green"></i>
-                                                                            ) : (
-                                                                                <>
-                                                                                    <i className="fa-solid fa-plus text-xl mb-1 opacity-0 group-hover:opacity-100 transition-opacity"></i>
-                                                                                    <span className="text-[10px] font-extrabold uppercase tracking-wider opacity-0 group-hover:opacity-100 transition-opacity">Book</span>
-                                                                                </>
-                                                                            )}
-                                                                        </div>
-                                                                    )}
-                                                                </td>
-                                                            );
-                                                        })}
+                                                        {currentDays.map((day, dayIdx) => (
+                                                            <td key={dayIdx} className="p-2 align-top">
+                                                                {renderScheduleSlot(dayIdx, period)}
+                                                            </td>
+                                                        ))}
                                                     </tr>
                                                 ))}
                                             </tbody>
                                         </table>
+                                    </div>
+
+                                    <div className="md:hidden p-3 sm:p-4 space-y-4">
+                                        {currentDays.map((day, dayIdx) => (
+                                            <section key={day} className="border-2 border-duo-grayBorder rounded-2xl overflow-hidden bg-white ios-mobile-day-card">
+                                                <div className="bg-duo-grayLight border-b-2 border-duo-grayBorder px-4 py-3 flex items-center justify-between ios-mobile-day-header">
+                                                    <h3 className="font-extrabold text-duo-text uppercase tracking-wider">{day}</h3>
+                                                    <span className="text-xs font-extrabold text-gray-400 bg-white border-2 border-duo-grayBorder rounded-lg px-2 py-1">{getDateForDayIdx(selectedWeek, dayIdx)}</span>
+                                                </div>
+                                                <div className="divide-y-2 divide-duo-grayBorder">
+                                                    {periods.map((period) => (
+                                                        <div key={period.id} className="p-3">
+                                                            <div className="flex items-center justify-between mb-2 px-1">
+                                                                <span className="font-extrabold text-sm text-duo-text">{period.name}</span>
+                                                                <span className="text-[11px] font-bold text-gray-400">{period.time}</span>
+                                                            </div>
+                                                            {renderScheduleSlot(dayIdx, period, true)}
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </section>
+                                        ))}
                                     </div>
                                 </div>
                             </div>
                         )}
 
                         {isBatchMode && batchSelection.length > 0 && (
-                            <div className="fixed bottom-8 left-1/2 -translate-x-1/2 bg-gray-900/90 backdrop-blur-md px-6 py-4 rounded-full shadow-2xl flex items-center gap-6 z-50 animate-[bounceIn_0.3s_cubic-bezier(0.175,0.885,0.32,1.275)] border-2 border-gray-700">
+                            <div className="fixed bottom-4 left-4 right-4 sm:bottom-8 sm:left-1/2 sm:right-auto sm:-translate-x-1/2 bg-gray-900/90 backdrop-blur-md px-5 sm:px-6 py-4 rounded-2xl sm:rounded-full shadow-2xl flex flex-col sm:flex-row items-stretch sm:items-center gap-3 sm:gap-6 z-50 animate-[bounceIn_0.3s_cubic-bezier(0.175,0.885,0.32,1.275)] border-2 border-gray-700">
                                 <span className="font-extrabold text-white"><span className="text-duo-green">{batchSelection.length}</span> Slots Selected</span>
-                                <button onClick={() => { setBookForm({ classType: currentUser.defaultClass, customClass: currentUser.customClass }); setBookingModal({ isOpen: true, isBatch: true, existingBooking: null, isEditing: false }); }} className="bg-duo-green text-white px-6 py-2.5 rounded-full font-extrabold uppercase tracking-wider text-sm hover:bg-duo-greenDark active:scale-95 transition-all shadow-[0_3px_0_0_#58a700]">
+                                <button onClick={() => { const batchDefaultQuantity = Math.min(...batchSelection.map(slot => getSlotRemainingQuantity(selectedCart, slot.slotId))); setBookForm(createDefaultBookForm(batchDefaultQuantity)); setBookingModal({ isOpen: true, isBatch: true, existingBooking: null, isEditing: false }); }} className="bg-duo-green text-white px-6 py-2.5 rounded-full font-extrabold uppercase tracking-wider text-sm hover:bg-duo-greenDark active:scale-95 transition-all shadow-[0_3px_0_0_#58a700]">
                                     Book Now
                                 </button>
                             </div>
@@ -1495,7 +1744,7 @@
                                                                 {getIcon(data.type)}
                                                                 <div className="truncate">
                                                                     <div className="font-extrabold text-lg text-duo-text leading-none truncate">{name}</div>
-                                                                    <div className="text-sm font-bold text-gray-400 mt-1 truncate">{data.capacity} pts • {data.location}</div>
+                                                                    <div className="text-sm font-bold text-gray-400 mt-1 truncate">{data.capacity} devices • {data.location}</div>
                                                                 </div>
                                                             </div>
                                                             <div className="flex gap-2 ml-2 shrink-0">
@@ -1519,7 +1768,7 @@
                                                 <div className="overflow-x-auto border-2 border-duo-grayBorder rounded-2xl">
                                                     <table className="w-full text-left">
                                                         <thead className="bg-duo-grayLight border-b-2 border-duo-grayBorder">
-                                                            <tr><th className="p-4 text-xs font-extrabold text-gray-400 uppercase tracking-wider">Name</th><th className="p-4 text-xs font-extrabold text-gray-400 uppercase tracking-wider">Google Email</th><th className="p-4 text-xs font-extrabold text-gray-400 uppercase tracking-wider">Default Class</th><th className="p-4 text-right text-xs font-extrabold text-gray-400 uppercase tracking-wider">Actions</th></tr>
+                                                            <tr><th className="p-4 text-xs font-extrabold text-gray-400 uppercase tracking-wider">Name</th><th className="p-4 text-xs font-extrabold text-gray-400 uppercase tracking-wider">Google Email</th><th className="p-4 text-xs font-extrabold text-gray-400 uppercase tracking-wider">Default Subject</th><th className="p-4 text-right text-xs font-extrabold text-gray-400 uppercase tracking-wider">Actions</th></tr>
                                                         </thead>
                                                         <tbody className="divide-y-2 divide-duo-grayBorder">
                                                             {Object.values(usersDB).map((user) => (
@@ -1713,6 +1962,7 @@
                     }
                     
                     const booking = cartData[cartName]?.schedule?.[`w${selectedWeek}_d${dayIdx}_p${period.id}`];
+                    const printBookings = normalizeSlotBookings(booking);
                     const printLock = getLockForSlot(cartName, selectedWeek, dayIdx, period.id);
 
                     return (
@@ -1722,10 +1972,14 @@
                                     <div>
                                         <strong className="text-[12px]">🔒 {printLock.name}</strong>
                                     </div>
-                                ) : booking ? (
+                                ) : printBookings.length > 0 ? (
                                     <div>
-                                        <span className="text-[10px] text-gray-600">{booking.className}</span><br/>
-                                        <strong className="text-[12px]">{booking.name}</strong>
+                                        {printBookings.map((printBooking, bookingIdx) => (
+                                            <div key={printBooking.id || bookingIdx} className="mb-1">
+                                                <span className="text-[10px] text-gray-600">{printBooking.className} · x{getBookingQuantity(printBooking)}</span><br/>
+                                                <strong className="text-[12px]">{printBooking.name}</strong>
+                                            </div>
+                                        ))}
                                     </div>
                                 ) : ""}
                             </td>
@@ -1772,7 +2026,7 @@
                                 <form onSubmit={handleAdminAddUser} className="p-6 space-y-4">
                                     <div><label className="block text-xs font-extrabold text-gray-400 uppercase tracking-wider mb-1">Full Name</label><input required type="text" value={addUserForm.name} onChange={e => setAddUserForm({...addUserForm, name: e.target.value})} className="w-full px-4 py-3 bg-white border-2 border-duo-grayBorder rounded-xl focus:border-duo-blue outline-none font-bold" /></div>
                                     <div><label className="block text-xs font-extrabold text-gray-400 uppercase tracking-wider mb-1">Google Email</label><input required type="email" value={addUserForm.email} onChange={e => setAddUserForm({...addUserForm, email: e.target.value})} placeholder="Must be a valid Google Account" className="w-full px-4 py-3 bg-white border-2 border-duo-grayBorder rounded-xl focus:border-duo-blue outline-none font-bold" /></div>
-                                    <div><label className="block text-xs font-extrabold text-gray-400 uppercase tracking-wider mb-1">Default Class</label><select value={addUserForm.classType} onChange={e => setAddUserForm({...addUserForm, classType: e.target.value})} className="w-full px-4 py-3 bg-white border-2 border-duo-grayBorder rounded-xl focus:border-duo-blue outline-none font-bold">{classOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}</select></div>
+                                    <div><label className="block text-xs font-extrabold text-gray-400 uppercase tracking-wider mb-1">Default Subject</label><select value={addUserForm.classType} onChange={e => setAddUserForm({...addUserForm, classType: e.target.value})} className="w-full px-4 py-3 bg-white border-2 border-duo-grayBorder rounded-xl focus:border-duo-blue outline-none font-bold">{classOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}</select></div>
                                     {addUserForm.classType === 'Other (Specify)' && <input required type="text" value={addUserForm.customClass} onChange={e => setAddUserForm({...addUserForm, customClass: e.target.value})} placeholder="Specify" className="w-full px-4 py-3 bg-white border-2 border-duo-grayBorder rounded-xl focus:border-duo-blue outline-none font-bold" />}
                                     <div className="flex gap-3 pt-4 border-t-2 border-duo-grayBorder mt-4">
                                         <button type="button" onClick={() => setAdminAddUserModal({ isOpen: false })} className="flex-1 bg-white border-2 border-duo-grayBorder text-gray-400 font-extrabold uppercase py-3 rounded-2xl shadow-duo-gray active:shadow-none active:translate-y-[4px] transition-all">Cancel</button>
@@ -1810,8 +2064,12 @@
                                         bookingModal.isEditing ? (
                                             <div className="space-y-4">
                                                 <div><label className="block text-xs font-extrabold text-gray-400 uppercase tracking-wider mb-1">Name</label><input type="text" value={editBookForm.name} onChange={e => setEditBookForm({...editBookForm, name: e.target.value})} className="w-full px-4 py-3 bg-white border-2 border-duo-grayBorder rounded-xl focus:border-duo-blue outline-none font-bold" /></div>
-                                                <div><label className="block text-xs font-extrabold text-gray-400 uppercase tracking-wider mb-1">Class/Dept</label><select value={editBookForm.classType} onChange={e => setEditBookForm({...editBookForm, classType: e.target.value})} className="w-full px-4 py-3 bg-white border-2 border-duo-grayBorder rounded-xl focus:border-duo-blue outline-none font-bold">{classOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}</select></div>
-                                                {editBookForm.classType === 'Other (Specify)' && <input type="text" value={editBookForm.customClass} onChange={e => setEditBookForm({...editBookForm, customClass: e.target.value})} placeholder="Specify" className="w-full px-4 py-3 bg-white border-2 border-duo-grayBorder rounded-xl focus:border-duo-blue outline-none font-bold" />}
+                                                <div><label className="block text-xs font-extrabold text-gray-400 uppercase tracking-wider mb-1">Subject</label><input type="text" value={editBookForm.subject} onChange={e => setEditBookForm({...editBookForm, subject: e.target.value})} placeholder="e.g., Science, 5A Math" className="w-full px-4 py-3 bg-white border-2 border-duo-grayBorder rounded-xl focus:border-duo-blue outline-none font-bold" /></div>
+                                                <div>
+                                                    <label className="block text-xs font-extrabold text-gray-400 uppercase tracking-wider mb-1">Quantity</label>
+                                                    <input type="number" min="1" max={bookingModalAvailableQuantity} value={editBookForm.quantity} onChange={e => setEditBookForm({...editBookForm, quantity: getSafeQuantity(e.target.value, 1)})} className="w-full px-4 py-3 bg-white border-2 border-duo-grayBorder rounded-xl focus:border-duo-blue outline-none font-bold" />
+                                                    <p className="mt-1 text-[11px] font-bold text-gray-400">Max for this slot: {bookingModalAvailableQuantity}</p>
+                                                </div>
                                                 <div className="flex gap-3 pt-4 border-t-2 border-duo-grayBorder mt-4">
                                                     <button onClick={() => setBookingModal(prev => ({...prev, isEditing: false}))} className="flex-1 bg-white border-2 border-duo-grayBorder text-gray-400 font-extrabold uppercase py-3 rounded-2xl shadow-duo-gray active:shadow-none active:translate-y-[4px] transition-all">Cancel</button>
                                                     <button onClick={updateBooking} className="flex-1 bg-duo-green text-white font-extrabold uppercase py-3 rounded-2xl shadow-duo-green active:shadow-none active:translate-y-[4px] transition-all">Save</button>
@@ -1824,6 +2082,9 @@
                                                 </div>
                                                 <div className="font-extrabold text-duo-text text-2xl mb-1">{bookingModal.existingBooking.name}</div>
                                                 <div className="font-bold text-gray-400 bg-gray-100 inline-block px-3 py-1 rounded-lg text-sm mb-6">{bookingModal.existingBooking.className}</div>
+                                                <div className="font-extrabold text-duo-blue bg-blue-50 border-2 border-blue-100 inline-flex items-center px-4 py-2 rounded-xl text-sm mb-6">
+                                                    <i className="fa-solid fa-laptop mr-2"></i> x{getBookingQuantity(bookingModal.existingBooking)} devices
+                                                </div>
                                                 
                                                 {(isAdmin || bookingModal.existingBooking.ownerEmail === currentUser.email) ? (
                                                     bookingModal.isPast && !isAdmin ? (
@@ -1833,7 +2094,7 @@
                                                         </div>
                                                     ) : (
                                                         <div className="flex gap-3">
-                                                            {isAdmin && <button onClick={handleEditClick} className="flex-1 bg-white border-2 border-duo-grayBorder text-duo-blue font-extrabold uppercase py-3 rounded-2xl shadow-duo-gray active:shadow-none active:translate-y-[4px] transition-all"><i className="fa-solid fa-pen"></i></button>}
+                                                            {(isAdmin || bookingModal.existingBooking.ownerEmail === currentUser.email) && <button onClick={handleEditClick} className="flex-1 bg-white border-2 border-duo-grayBorder text-duo-blue font-extrabold uppercase py-3 rounded-2xl shadow-duo-gray active:shadow-none active:translate-y-[4px] transition-all"><i className="fa-solid fa-pen"></i></button>}
                                                             <button onClick={cancelBooking} className="flex-[2] bg-duo-red text-white font-extrabold uppercase py-3 rounded-2xl shadow-[0_4px_0_0_#ea2b2b] active:shadow-none active:translate-y-[4px] transition-all">Remove</button>
                                                         </div>
                                                     )
@@ -1847,8 +2108,13 @@
                                         )
                                     ) : (
                                         <div className="space-y-4">
-                                            <div><label className="block text-xs font-extrabold text-gray-400 uppercase tracking-wider mb-1">Class/Dept</label><select value={bookForm.classType} onChange={e => setBookForm({...bookForm, classType: e.target.value})} className="w-full px-4 py-3 bg-white border-2 border-duo-grayBorder rounded-xl focus:border-duo-blue outline-none font-bold text-duo-text">{classOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}</select></div>
-                                            {bookForm.classType === 'Other (Specify)' && <input type="text" value={bookForm.customClass} onChange={e => setBookForm({...bookForm, customClass: e.target.value})} placeholder="Specify Department" className="w-full px-4 py-3 bg-white border-2 border-duo-grayBorder rounded-xl focus:border-duo-blue outline-none font-bold text-duo-text" />}
+                                            <div><label className="block text-xs font-extrabold text-gray-400 uppercase tracking-wider mb-1">Name</label><input type="text" value={bookForm.name} onChange={e => setBookForm({...bookForm, name: e.target.value})} placeholder="Teacher name" className="w-full px-4 py-3 bg-white border-2 border-duo-grayBorder rounded-xl focus:border-duo-blue outline-none font-bold text-duo-text" /></div>
+                                            <div><label className="block text-xs font-extrabold text-gray-400 uppercase tracking-wider mb-1">Subject</label><input type="text" value={bookForm.subject} onChange={e => setBookForm({...bookForm, subject: e.target.value})} placeholder="e.g., Science, 5A Math" className="w-full px-4 py-3 bg-white border-2 border-duo-grayBorder rounded-xl focus:border-duo-blue outline-none font-bold text-duo-text" /></div>
+                                            <div>
+                                                <label className="block text-xs font-extrabold text-gray-400 uppercase tracking-wider mb-1">Quantity</label>
+                                                <input type="number" min="1" max={bookingModalAvailableQuantity} value={bookForm.quantity} onChange={e => setBookForm({...bookForm, quantity: getSafeQuantity(e.target.value, 1)})} className="w-full px-4 py-3 bg-white border-2 border-duo-grayBorder rounded-xl focus:border-duo-blue outline-none font-bold text-duo-text" />
+                                                <p className="mt-1 text-[11px] font-bold text-gray-400">Available for selected slot{bookingModal.isBatch ? 's' : ''}: {bookingModalAvailableQuantity}</p>
+                                            </div>
                                             <div className="flex gap-3 pt-6">
                                                 <button onClick={() => setBookingModal({ isOpen: false })} className="flex-1 bg-white border-2 border-duo-grayBorder text-gray-400 font-extrabold uppercase py-4 rounded-2xl shadow-duo-gray active:shadow-none active:translate-y-[4px] transition-all tracking-wider">Cancel</button>
                                                 <button onClick={checkConflictsAndSubmit} className="flex-[2] bg-duo-green text-white font-extrabold uppercase py-4 rounded-2xl shadow-[0_4px_0_0_#58a700] active:shadow-none active:translate-y-[4px] transition-all tracking-wider">Confirm</button>
