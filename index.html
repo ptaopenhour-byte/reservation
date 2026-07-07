@@ -1323,34 +1323,34 @@
             return (
                 <div className="min-h-screen bg-[#ffffff] ios-mobile-shell">
                     <header className="bg-white border-b-2 border-duo-grayBorder sticky top-0 z-50 no-print ios-mobile-header">
-                        <div className="max-w-7xl mx-auto px-4 py-3 sm:py-4 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 sm:gap-4">
+                        <div className="max-w-7xl mx-auto px-4 py-3 md:py-4 flex flex-col md:flex-row md:justify-between md:items-center gap-3 md:gap-4">
                             <div className="flex items-center space-x-3 cursor-pointer group" onClick={goHome}>
                                 <i className="fa-solid fa-cube text-duo-green text-3xl group-hover:scale-110 transition-transform"></i>
-                                <h1 className="text-xl font-extrabold text-duo-green tracking-tight sm:hidden">IBSH Carts</h1>
-                                <h1 className="text-2xl font-extrabold text-duo-green tracking-tight hidden sm:block">IBSH Chromebook Carts Reservation</h1>
+                                <h1 className="text-xl font-extrabold text-duo-green tracking-tight md:hidden">IBSH Carts</h1>
+                                <h1 className="text-2xl font-extrabold text-duo-green tracking-tight hidden md:block">IBSH Chromebook Carts Reservation</h1>
                             </div>
                             
-                            <div className="w-full sm:w-auto flex items-center gap-2 sm:gap-3 overflow-x-auto hide-scrollbar pb-1 sm:pb-0">
-                                <button onClick={() => changeView('print')} className="shrink-0 px-4 py-2.5 bg-white border-2 border-duo-grayBorder text-gray-400 font-extrabold uppercase tracking-wider rounded-2xl shadow-[0_4px_0_0_#e5e5e5] hover:bg-gray-50 active:shadow-none active:translate-y-[4px] transition-all text-xs sm:text-sm">
+                            <div className="w-full md:w-auto flex flex-wrap items-center justify-center md:justify-end gap-2 md:gap-3 pb-1 md:pb-0">
+                                <button onClick={() => changeView('print')} aria-label="Print records" className="shrink-0 min-h-[44px] px-4 py-2.5 bg-white border-2 border-duo-grayBorder text-gray-400 font-extrabold uppercase tracking-wider rounded-2xl shadow-[0_4px_0_0_#e5e5e5] hover:bg-gray-50 active:shadow-none active:translate-y-[4px] transition-all text-xs sm:text-sm">
                                     <i className="fa-solid fa-print sm:mr-1"></i> <span className="hidden sm:inline">Print</span>
                                 </button>
 
-                                <button onClick={() => changeView('my-bookings')} className={`shrink-0 px-4 py-2.5 font-extrabold uppercase tracking-wider rounded-2xl transition-all text-xs sm:text-sm ${currentView === 'my-bookings' ? 'bg-duo-blue text-white shadow-[0_4px_0_0_#1899d6] active:shadow-none active:translate-y-[4px]' : 'bg-white border-2 border-duo-grayBorder text-duo-blue shadow-[0_4px_0_0_#e5e5e5] hover:bg-blue-50 active:shadow-none active:translate-y-[4px]'}`}>
+                                <button onClick={() => changeView('my-bookings')} aria-label="My bookings" className={`shrink-0 min-h-[44px] px-4 py-2.5 font-extrabold uppercase tracking-wider rounded-2xl transition-all text-xs sm:text-sm ${currentView === 'my-bookings' ? 'bg-duo-blue text-white shadow-[0_4px_0_0_#1899d6] active:shadow-none active:translate-y-[4px]' : 'bg-white border-2 border-duo-grayBorder text-duo-blue shadow-[0_4px_0_0_#e5e5e5] hover:bg-blue-50 active:shadow-none active:translate-y-[4px]'}`}>
                                     <i className="fa-solid fa-calendar-check sm:mr-1"></i> <span className="hidden sm:inline">My Bookings</span>
                                 </button>
 
                                 {isAdmin && (
-                                    <button onClick={() => { changeView('admin'); setAdminTab('carts'); }} className={`shrink-0 px-4 py-2.5 font-extrabold uppercase tracking-wider rounded-2xl transition-all text-xs sm:text-sm ${currentView === 'admin' ? 'bg-duo-text text-white shadow-[0_4px_0_0_#2b2b2b] active:shadow-none active:translate-y-[4px]' : 'bg-white border-2 border-duo-grayBorder text-duo-text shadow-[0_4px_0_0_#e5e5e5] hover:bg-gray-50 active:shadow-none active:translate-y-[4px]'}`}>
+                                    <button onClick={() => { changeView('admin'); setAdminTab('carts'); }} aria-label="Admin settings" className={`shrink-0 min-h-[44px] px-4 py-2.5 font-extrabold uppercase tracking-wider rounded-2xl transition-all text-xs sm:text-sm ${currentView === 'admin' ? 'bg-duo-text text-white shadow-[0_4px_0_0_#2b2b2b] active:shadow-none active:translate-y-[4px]' : 'bg-white border-2 border-duo-grayBorder text-duo-text shadow-[0_4px_0_0_#e5e5e5] hover:bg-gray-50 active:shadow-none active:translate-y-[4px]'}`}>
                                         <i className="fa-solid fa-gear sm:mr-1"></i> <span className="hidden sm:inline">Admin</span>
                                     </button>
                                 )}
                                 
-                                <div className="shrink-0 flex items-center sm:ml-2 border-2 border-duo-grayBorder rounded-2xl h-[44px] overflow-hidden bg-duo-grayLight">
-                                    <div className="px-3 sm:px-4 font-extrabold text-duo-blue text-sm flex items-center h-full max-w-[110px] sm:max-w-[120px] truncate">
+                                <div className="shrink-0 flex items-center md:ml-2 border-2 border-duo-grayBorder rounded-2xl h-[44px] overflow-hidden bg-duo-grayLight">
+                                    <div className="px-3 sm:px-4 font-extrabold text-duo-blue text-sm flex items-center h-full max-w-[120px] md:max-w-[140px] truncate">
                                         <i className={`fa-solid ${isAdmin ? 'fa-shield-halved text-duo-yellow' : 'fa-user'} mr-2`}></i>
                                         {currentUser.name}
                                     </div>
-                                    <button onClick={async () => { await dbRefs.fb.signOut(dbRefs.auth); setCurrentUser(null); setIsAdmin(false); setCartData({}); setActivityLogs([]); setUsersDB({}); }} className="px-3 h-full border-l-2 border-duo-grayBorder text-gray-400 hover:text-duo-red hover:bg-red-50 transition-colors" title="Log Out">
+                                    <button onClick={async () => { await dbRefs.fb.signOut(dbRefs.auth); setCurrentUser(null); setIsAdmin(false); setCartData({}); setActivityLogs([]); setUsersDB({}); }} className="px-3 h-full border-l-2 border-duo-grayBorder text-gray-400 hover:text-duo-red hover:bg-red-50 transition-colors" title="Log Out" aria-label="Log out">
                                         <i className="fa-solid fa-right-from-bracket"></i>
                                     </button>
                                 </div>
