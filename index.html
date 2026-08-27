@@ -351,13 +351,44 @@
                 return () => { unsubLogs(); };
             }, [dbRefs, isAdmin, adminTab]);
 
+            const parseLocalDate = (value) => {
+                if (!value) return null;
+                const parts = String(value).split(/[\/-]/).map(Number);
+                if (parts.length < 3 || parts.some(Number.isNaN)) return null;
+
+                const date = new Date(parts[0], parts[1] - 1, parts[2]);
+                if (isNaN(date.getTime())) return null;
+
+                date.setHours(0, 0, 0, 0);
+                return date;
+            };
+
+            const getTodayDate = () => {
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+                return today;
+            };
+
+            const getSlotDate = (weekNum, dayIdx) => {
+                const start = parseLocalDate(semesterConfig.startDate);
+                if (!start) return null;
+
+                const slotDate = new Date(start);
+                slotDate.setDate(slotDate.getDate() + (Number(weekNum) - 1) * 7 + Number(dayIdx));
+                return slotDate;
+            };
+
+            const isSlotBeforeToday = (weekNum, dayIdx) => {
+                const slotDate = getSlotDate(weekNum, dayIdx);
+                if (!slotDate) return false;
+                return slotDate < getTodayDate();
+            };
+
             useEffect(() => {
                 if (firebaseReady && firebaseReady !== 'auth-error') {
-                    const now = new Date();
-                    const [year, month, day] = semesterConfig.startDate.split('-').map(Number);
-                    const start = new Date(year, month - 1, day);
-                    start.setHours(0, 0, 0, 0);
-                    now.setHours(0, 0, 0, 0);
+                    const now = getTodayDate();
+                    const start = parseLocalDate(semesterConfig.startDate);
+                    if (!start) return;
                     
                     const diffTime = now.getTime() - start.getTime();
                     const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
@@ -453,8 +484,8 @@
             };
 
             const getWeekDateRange = (weekNum, includeSat) => {
-                const start = new Date(semesterConfig.startDate);
-                if (isNaN(start.getTime())) return "Invalid Date";
+                const start = parseLocalDate(semesterConfig.startDate);
+                if (!start) return "Invalid Date";
                 start.setDate(start.getDate() + (weekNum - 1) * 7);
                 const end = new Date(start);
                 end.setDate(end.getDate() + (includeSat ? 5 : 4)); 
@@ -462,11 +493,8 @@
             };
 
             const getDateForDayIdx = (weekNum, dayIdx) => {
-                if (!semesterConfig.startDate) return "";
-                const [year, month, day] = semesterConfig.startDate.split('-').map(Number);
-                const date = new Date(year, month - 1, day);
-                if (isNaN(date.getTime())) return "";
-                date.setDate(date.getDate() + (weekNum - 1) * 7 + dayIdx);
+                const date = getSlotDate(weekNum, dayIdx);
+                if (!date) return "";
                 return `${date.getMonth() + 1}/${date.getDate()}`;
             };
 
@@ -745,9 +773,6 @@
                 });
             };
 
-            const todayDay = new Date().getDay();
-            const currentRealDayIdx = todayDay === 0 ? 6 : todayDay - 1;
-
             const handleSlotClick = (dayIdx, periodId, existingBooking) => {
                 if (periodId === 'lunch') return;
                 const slotId = `w${selectedWeek}_d${dayIdx}_p${periodId}`;
@@ -758,7 +783,7 @@
                     return;
                 }
 
-                const isPastSlot = selectedWeek < currentRealWeek || (selectedWeek === currentRealWeek && dayIdx < currentRealDayIdx);
+                const isPastSlot = isSlotBeforeToday(selectedWeek, dayIdx);
 
                 const isPastLimit = !isAdmin && (selectedWeek > currentRealWeek + (semesterConfig.maxAdvanceWeeks || 2));
                 if (isPastLimit) {
@@ -1236,12 +1261,12 @@
             };
 
             const upcomingBookings = useMemo(() =>
-                allMyBookings.filter(b => b.week > currentRealWeek || (b.week === currentRealWeek && b.dayIdx >= currentRealDayIdx)),
-                [allMyBookings, currentRealWeek, currentRealDayIdx]
+                allMyBookings.filter(b => !isSlotBeforeToday(b.week, b.dayIdx)),
+                [allMyBookings, semesterConfig.startDate, currentRealWeek]
             );
             const historyBookings = useMemo(() =>
-                allMyBookings.filter(b => b.week < currentRealWeek || (b.week === currentRealWeek && b.dayIdx < currentRealDayIdx)),
-                [allMyBookings, currentRealWeek, currentRealDayIdx]
+                allMyBookings.filter(b => isSlotBeforeToday(b.week, b.dayIdx)),
+                [allMyBookings, semesterConfig.startDate, currentRealWeek]
             );
             const displayedBookings = myBookingsTab === 'upcoming' ? upcomingBookings : historyBookings;
             const selectedCartCapacity = selectedCart ? getCartCapacity(cartData[selectedCart]) : 1;
