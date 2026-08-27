@@ -148,11 +148,11 @@
             
             const [semesterConfig, setSemesterConfig] = useState({ startDate: '2026-02-23', totalWeeks: 19, maxAdvanceWeeks: 2 });
             const [tempSemesterConfig, setTempSemesterConfig] = useState({ ...semesterConfig });
+            const [semesterConfigLoaded, setSemesterConfigLoaded] = useState(false);
 
             const [selectedWeek, setSelectedWeek] = useState(1);
             const [currentRealWeek, setCurrentRealWeek] = useState(1);
             const [allowSaturday, setAllowSaturday] = useState(false);
-            const [hasAutoSetWeek, setHasAutoSetWeek] = useState(false);
             const currentDays = allowSaturday ? [...baseDays, "Saturday"] : baseDays;
 
             const [cartData, setCartData] = useState({});
@@ -304,6 +304,7 @@
                             allowSaturday: false
                         }).catch(e => {});
                     }
+                    setSemesterConfigLoaded(true);
                 }, err => console.error("Firestore Error:", err));
 
                 return () => { unsubCarts(); unsubSettings(); };
@@ -385,26 +386,22 @@
             };
 
             useEffect(() => {
-                if (firebaseReady && firebaseReady !== 'auth-error') {
-                    const now = getTodayDate();
-                    const start = parseLocalDate(semesterConfig.startDate);
-                    if (!start) return;
-                    
-                    const diffTime = now.getTime() - start.getTime();
-                    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-                    let currentWeekCalc = Math.floor(diffDays / 7) + 1;
-                    
-                    if (currentWeekCalc < 1) currentWeekCalc = 1;
-                    if (currentWeekCalc > semesterConfig.totalWeeks) currentWeekCalc = semesterConfig.totalWeeks;
-                    
-                    setCurrentRealWeek(currentWeekCalc);
+                if (!semesterConfigLoaded) return;
 
-                    if (!hasAutoSetWeek) {
-                        setSelectedWeek(currentWeekCalc);
-                        setHasAutoSetWeek(true); 
-                    }
-                }
-            }, [firebaseReady, semesterConfig, hasAutoSetWeek]);
+                const now = getTodayDate();
+                const start = parseLocalDate(semesterConfig.startDate);
+                if (!start) return;
+                
+                const diffTime = now.getTime() - start.getTime();
+                const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+                let currentWeekCalc = Math.floor(diffDays / 7) + 1;
+                
+                if (currentWeekCalc < 1) currentWeekCalc = 1;
+                if (currentWeekCalc > semesterConfig.totalWeeks) currentWeekCalc = semesterConfig.totalWeeks;
+                
+                setCurrentRealWeek(currentWeekCalc);
+                setSelectedWeek(currentWeekCalc);
+            }, [semesterConfigLoaded, semesterConfig.startDate, semesterConfig.totalWeeks]);
 
             useEffect(() => {
                 if (selectedWeek > semesterConfig.totalWeeks) setSelectedWeek(semesterConfig.totalWeeks);
