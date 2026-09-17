@@ -1,0 +1,2096 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IBSH Chromebook Carts Reservation</title>
+    
+    <link rel="stylesheet" href="./workspace.css">
+    
+    <!-- 引入 Tailwind CSS 並設定自訂主題顏色 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        duo: {
+                            green: '#168574', greenDark: '#116657',
+                            blue: '#3370ff', blueDark: '#245bdb',
+                            red: '#c93c47', redDark: '#aa2933',
+                            yellow: '#ac7013', yellowDark: '#89580c',
+                            text: '#202531', grayLight: '#f5f6f8', grayBorder: '#e4e7ed'
+                        }
+                    },
+                    fontFamily: { sans: ['-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'sans-serif'] },
+                    boxShadow: {
+                        'duo-green': 'none', 'duo-blue': 'none',
+                        'duo-red': 'none', 'duo-gray': 'none', 'duo-card': 'none',
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <!-- 引入 FontAwesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- 引入 React 與 ReactDOM -->
+    <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+    <script src="https://unpkg.com/@babel/standalone@7.24.7/babel.min.js"></script>
+
+    <style>
+        @media print {
+            @page { size: A4 landscape; margin: 10mm; }
+            body { background: white; margin: 0; padding: 0; }
+            .no-print { display: none !important; }
+            .print-only { display: block !important; width: 100%; }
+            .page-break { page-break-after: always; height: 96vh; display: flex; flex-direction: column; }
+            table { width: 100%; flex-grow: 1; border-collapse: collapse; table-layout: fixed; }
+            th, td { border: 1px solid #000; text-align: center; vertical-align: middle; font-family: sans-serif; word-wrap: break-word; overflow: hidden; }
+            th { background-color: #f3f4f6 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; font-weight: bold; }
+            .col-period { width: 65px; } 
+            .print-lunch { background-color: #e5e7eb !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; letter-spacing: 2px; font-size: 14px; }
+        }
+        .hide-scrollbar::-webkit-scrollbar { display: none; }
+        .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    </style>      
+</head>
+<body class="bg-white font-sans text-duo-text selection:bg-duo-green selection:text-white">
+    
+    <div id="root"></div>
+
+    <script type="module">
+        import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js';
+        import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken, GoogleAuthProvider, signInWithPopup, signOut } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js';
+        import { getFirestore, collection, doc, getDoc, setDoc, deleteDoc, onSnapshot, runTransaction, query, orderBy, limit, serverTimestamp, updateDoc, deleteField, writeBatch } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
+
+        window.fbModules = {
+            initializeApp, getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken, GoogleAuthProvider, signInWithPopup, signOut,
+            getFirestore, collection, doc, getDoc, setDoc, deleteDoc, onSnapshot, runTransaction, query, orderBy, limit, serverTimestamp, updateDoc, deleteField, writeBatch
+        };
+        window.dispatchEvent(new Event('firebaseLoaded'));
+    </script>
+
+    <script type="text/babel">
+        // 🔧 FIX [效能]: 加入 useMemo & useCallback，避免每次 render 重新計算
+        const { useState, useEffect, useMemo, useCallback, useRef } = React;
+
+        const Icon = ({ name, ...props }) => <i aria-hidden="true" className={`fa-solid fa-${name}`} {...props} />;
+        const IconButton = ({ label, name, className = '', ...props }) => (
+            <button type="button" className={`icon-button ${className}`} aria-label={label} title={label} {...props}><Icon name={name} /></button>
+        );
+
+        function FocusPanel({ children, onClose, modal = true, busy = false, className = '', titleId }) {
+            const panelRef = useRef(null);
+            const closeRef = useRef(onClose);
+            closeRef.current = onClose;
+            useEffect(() => {
+                const previous = document.activeElement;
+                panelRef.current?.focus();
+                return () => { if (previous?.isConnected) previous.focus(); };
+            }, []);
+            return <section ref={panelRef} tabIndex={-1} role="dialog" aria-modal={modal || undefined} aria-labelledby={titleId} className={className} onKeyDown={event => {
+                if (event.key === 'Escape' && !busy) { event.stopPropagation(); closeRef.current(); }
+                if (event.key !== 'Tab' || !modal) return;
+                const focusable = [...panelRef.current.querySelectorAll('button, input, select, textarea, [tabindex="0"]')].filter(el => !el.disabled && el.getClientRects().length);
+                const first = focusable[0], last = focusable[focusable.length - 1];
+                if (!first) { event.preventDefault(); return; }
+                if (event.shiftKey && (document.activeElement === first || document.activeElement === panelRef.current)) { event.preventDefault(); last.focus(); }
+                else if (!event.shiftKey && (document.activeElement === last || document.activeElement === panelRef.current)) { event.preventDefault(); first.focus(); }
+            }}>{children}</section>;
+        }
+
+        const isCanvasEnv = typeof __firebase_config !== 'undefined';
+        const defaultFirebaseConfig = {
+            apiKey: "AIzaSyC13KFTs6QifMQc0HVsUstfjAmLbpoF0t4",
+            authDomain: "cartreserver.firebaseapp.com",
+            projectId: "cartreserver",
+            storageBucket: "cartreserver.firebasestorage.app",
+            messagingSenderId: "86740355319",
+            appId: "1:86740355319:web:66828caf35bbdb04f5abf2"
+        };
+
+        const firebaseConfig = isCanvasEnv ? JSON.parse(__firebase_config) : defaultFirebaseConfig;
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'cartreserver-app';
+
+        const initialData = {
+            "Cart 8": { type: "Chromebook", location: "Student Affairs Office", capacity: 30, schedule: {}, notes: "Elevator malfunction, please note", order: 0 },
+            "Cart 4": { type: "Chromebook", location: "Student Affairs Office", capacity: 20, schedule: {}, order: 1 },
+            "Cart 6": { type: "Chromebook", location: "Subject Building", capacity: 22, notes: "Under maintenance (#04, #08)", schedule: {}, order: 2 },
+            "iPad Cart 1": { type: "iPad", location: "Academic Affairs Office", capacity: 21, schedule: {}, order: 3 },
+        };
+
+        const initialUsers = {
+            "bianca@school.edu": { name: "Bianca", email: "bianca@school.edu", defaultClass: "11A", customClass: "" },
+            "yvonne@school.edu": { name: "Yvonne", email: "yvonne@school.edu", defaultClass: "11B", customClass: "" }
+        };
+
+        const periods = [
+            { id: 1, time: "8:10-9:00", name: "Period 1" }, { id: 2, time: "9:10-10:00", name: "Period 2" },
+            { id: 3, time: "10:10-11:00", name: "Period 3" }, { id: 4, time: "11:10-12:00", name: "Period 4" },
+            { id: "lunch", time: "12:00-13:00", name: "Lunch Break" },
+            { id: 5, time: "13:10-14:00", name: "Period 5" }, { id: 6, time: "14:10-15:00", name: "Period 6" },
+            { id: 7, time: "15:20-16:10", name: "Period 7" }, { id: 8, time: "16:20-17:10", name: "Period 8" }
+        ];
+
+        const baseDays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
+        const classOptions = Array.from({ length: 12 }, (_, i) => [`${i + 1}A`, `${i + 1}B`]).flat();
+        classOptions.push("Other (Specify)");
+
+        const getTimestamp = () => new Date().toLocaleString('en-US', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+
+        function App() {
+            const [firebaseReady, setFirebaseReady] = useState(false);
+            const [dbRefs, setDbRefs] = useState(null);
+            
+            const [alertModal, setAlertModal] = useState({ isOpen: false, message: '' });
+            const [confirmModal, setConfirmModal] = useState({ isOpen: false, message: '', onConfirm: null });
+
+            const showAlert = (message) => setAlertModal({ isOpen: true, message });
+            const showConfirm = (message, onConfirm) => setConfirmModal({ isOpen: true, message, onConfirm });
+
+            const [currentView, setCurrentView] = useState('schedule');
+            const [viewHistory, setViewHistory] = useState(['schedule']);
+            const [activeLocationFilter, setActiveLocationFilter] = useState('All'); 
+            const [searchQuery, setSearchQuery] = useState('');
+            const [selectedCart, setSelectedCart] = useState(null);
+            const [adminTab, setAdminTab] = useState('carts');
+            const [sidebarOpen, setSidebarOpen] = useState(false);
+            const [mobileDay, setMobileDay] = useState(Math.min(4, Math.max(0, new Date().getDay() - 1)));
+            const [compactViewport, setCompactViewport] = useState(window.innerWidth < 1280);
+            const [mobileViewport, setMobileViewport] = useState(window.innerWidth < 768);
+            const sidebarRef = useRef(null);
+            const [cartsLoaded, setCartsLoaded] = useState(false);
+            const [dataError, setDataError] = useState('');
+            const [isSaving, setIsSaving] = useState(false);
+            const bookingBusy = useRef(false);
+            const [toast, setToast] = useState('');
+            
+            const [semesterConfig, setSemesterConfig] = useState({ startDate: '2026-02-23', totalWeeks: 19, maxAdvanceWeeks: 2 });
+            const [tempSemesterConfig, setTempSemesterConfig] = useState({ ...semesterConfig });
+            const [semesterConfigLoaded, setSemesterConfigLoaded] = useState(false);
+
+            const [selectedWeek, setSelectedWeek] = useState(1);
+            const [currentRealWeek, setCurrentRealWeek] = useState(1);
+            const [allowSaturday, setAllowSaturday] = useState(false);
+            const currentDays = allowSaturday ? [...baseDays, "Saturday"] : baseDays;
+
+            const [cartData, setCartData] = useState({});
+            const [usersDB, setUsersDB] = useState({}); 
+            const [activityLogs, setActivityLogs] = useState([]); 
+            
+            const [currentUser, setCurrentUser] = useState(null);
+            const [isAdmin, setIsAdmin] = useState(false);
+            
+            const [authMode, setAuthMode] = useState('login');
+            
+            const [adminAddUserModal, setAdminAddUserModal] = useState({ isOpen: false });
+            const [addUserForm, setAddUserForm] = useState({ name: '', email: '', classType: '1A', customClass: '' });
+
+            const [bookingModal, setBookingModal] = useState({ isOpen: false, dayIdx: null, periodId: null, existingBooking: null, isEditing: false, isBatch: false, isPast: false });
+            const [bookForm, setBookForm] = useState({ name: '', subject: '', quantity: 1 });
+            const [editBookForm, setEditBookForm] = useState({ name: '', email: '', subject: '', quantity: 1 });
+            const [editCartModal, setEditCartModal] = useState({ isOpen: false, cartName: null, data: null });
+            const [printSelection, setPrintSelection] = useState([]);
+
+            const [recurringLocks, setRecurringLocks] = useState([]);
+            const [lockModal, setLockModal] = useState({ isOpen: false, lockId: null, data: null });
+
+            const [isBatchMode, setIsBatchMode] = useState(false);
+            const [batchSelection, setBatchSelection] = useState([]);
+            const [myBookingsView, setMyBookingsView] = useState('list');
+            const [myBookingsTab, setMyBookingsTab] = useState('upcoming');
+
+            const changeView = (newView) => {
+                if (bookingBusy.current) return;
+                setSidebarOpen(false);
+                setBookingModal({ isOpen: false });
+                setBatchSelection([]);
+                setIsBatchMode(false);
+                if (newView === currentView) return;
+                setViewHistory(prev => [...prev, newView]);
+                setCurrentView(newView);
+            };
+
+            const goBack = () => {
+                if (bookingBusy.current) return;
+                if (viewHistory.length > 1) {
+                    const newHistory = [...viewHistory];
+                    newHistory.pop();
+                    setViewHistory(newHistory);
+                    setCurrentView(newHistory[newHistory.length - 1]);
+                } else {
+                    setCurrentView('schedule');
+                }
+            };
+
+            const goHome = () => {
+                changeView('schedule');
+                setViewHistory(['schedule']);
+            };
+
+            const closeBooking = () => { if (!bookingBusy.current) setBookingModal({ isOpen: false }); };
+            const selectEquipment = name => {
+                if (bookingBusy.current) return;
+                setSelectedCart(name);
+                changeView('schedule');
+            };
+            const selectWeek = week => {
+                if (bookingBusy.current) return;
+                setBookingModal({ isOpen: false });
+                setBatchSelection([]);
+                setSelectedWeek(Math.max(1, Math.min(semesterConfig.totalWeeks, week)));
+            };
+            const handleLogout = async () => {
+                if (bookingBusy.current) return;
+                try {
+                    await dbRefs.fb.signOut(dbRefs.auth);
+                    setCurrentUser(null); setIsAdmin(false); setCartData({}); setActivityLogs([]); setUsersDB({});
+                    setSemesterConfigLoaded(false); setCartsLoaded(false); setSelectedCart(null); goHome();
+                } catch (error) { showAlert('Could not sign out. Please try again.'); }
+            };
+            useEffect(() => {
+                const media = window.matchMedia('(max-width: 1279px)');
+                const mobile = window.matchMedia('(max-width: 767px)');
+                const update = () => { setCompactViewport(media.matches); setMobileViewport(mobile.matches); if (!mobile.matches) setSidebarOpen(false); };
+                media.addEventListener('change', update);
+                mobile.addEventListener('change', update);
+                return () => { media.removeEventListener('change', update); mobile.removeEventListener('change', update); };
+            }, []);
+            useEffect(() => {
+                if (!sidebarOpen) return;
+                const previous = document.activeElement;
+                sidebarRef.current?.querySelector('button')?.focus();
+                return () => { if (previous?.isConnected) previous.focus(); };
+            }, [sidebarOpen]);
+            useEffect(() => {
+                if (!sidebarOpen && !(compactViewport && bookingModal.isOpen) && !alertModal.isOpen && !confirmModal.isOpen) return;
+                const previous = document.body.style.overflow;
+                document.body.style.overflow = 'hidden';
+                return () => { document.body.style.overflow = previous; };
+            }, [sidebarOpen, compactViewport, bookingModal.isOpen, alertModal.isOpen, confirmModal.isOpen]);
+            useEffect(() => {
+                if (!toast) return;
+                const timer = setTimeout(() => setToast(''), 4500);
+                return () => clearTimeout(timer);
+            }, [toast]);
+            useEffect(() => {
+                if (!allowSaturday && mobileDay > 4) setMobileDay(4);
+            }, [allowSaturday, mobileDay]);
+
+            // 🔧 FIX [安全]: 移除 signInAnonymously，改為僅 Google 登入
+        // 原本每個訪客都會建立匿名帳號，導致 Firebase Auth 充滿無用帳號，
+        // 且匿名帳號也能通過 rules 的 isAuthenticated() 讀寫資料。
+        // 現在改為：頁面載入 → 顯示登入畫面 → Google 登入後才能存取 Firestore。
+        // onAuthStateChanged 負責在頁面重新整理時自動恢復 Google session。
+        useEffect(() => {
+                const initFirebase = async () => {
+                    const fb = window.fbModules;
+                    const app = fb.initializeApp(firebaseConfig);
+                    const auth = fb.getAuth(app);
+                    const db = fb.getFirestore(app);
+
+                    const getCol = (colName) => isCanvasEnv
+                        ? fb.collection(db, 'artifacts', appId, 'public', 'data', colName)
+                        : fb.collection(db, colName);
+
+                    const getDocRef = (colName, docId) => isCanvasEnv
+                        ? fb.doc(db, 'artifacts', appId, 'public', 'data', colName, String(docId))
+                        : fb.doc(db, colName, String(docId));
+
+                    const refs = { getCol, getDocRef, db, auth, fb };
+                    setDbRefs(refs);
+
+                    // Canvas 環境使用 Custom Token
+                    if (isCanvasEnv && typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                        try {
+                            await fb.signInWithCustomToken(auth, __initial_auth_token);
+                        } catch (e) {
+                            console.error("Auth Error:", e);
+                            setFirebaseReady('auth-error');
+                            return;
+                        }
+                    }
+
+                    // 監聽 Auth 狀態：處理頁面重整時的 session 恢復
+                    const ADMIN_EMAIL = 'ptaopenhour@ibsh.tw';
+                    fb.onAuthStateChanged(auth, async (user) => {
+                        if (user && user.email) {
+                            // 已有 Google session，自動恢復登入狀態
+                            if (user.email === ADMIN_EMAIL) {
+                                setIsAdmin(true);
+                                setCurrentUser({ name: 'System Admin', email: ADMIN_EMAIL, defaultClass: 'Admin', customClass: '' });
+                            } else {
+                                try {
+                                    const userDocRef = refs.getDocRef('users', user.email);
+                                    const userDoc = await refs.fb.getDoc(userDocRef);
+                                    if (userDoc.exists()) {
+                                        setCurrentUser(userDoc.data());
+                                        setIsAdmin(false);
+                                    } else {
+                                        // 白名單中沒有此帳號，登出
+                                        await fb.signOut(auth);
+                                    }
+                                } catch (e) {
+                                    console.error("Session restore error:", e);
+                                }
+                            }
+                        }
+                        // 不管有沒有 session，都設為 ready（讓登入畫面能顯示）
+                        setFirebaseReady(true);
+                    });
+                };
+
+                if (window.fbModules) initFirebase();
+                else window.addEventListener('firebaseLoaded', initFirebase);
+            }, []);
+
+            // 🔧 FIX [安全]: Cart & Settings 訂閱改為「登入後才啟動」
+            // 原本匿名用戶就能觸發 onSnapshot 讀取所有推車資料。
+            // 現在加上 currentUser || isAdmin 條件，確保只有通過 Google 登入的用戶才會訂閱。
+            useEffect(() => {
+                if (!firebaseReady || firebaseReady === 'auth-error' || !dbRefs) return;
+                if (!currentUser && !isAdmin) return;
+
+                const unsubCarts = dbRefs.fb.onSnapshot(dbRefs.getCol('carts'), (snap) => {
+                    const newCarts = {};
+                    snap.forEach(d => { newCarts[d.id] = d.data(); });
+
+                    if (snap.empty && !window.__seededCarts) {
+                        window.__seededCarts = true;
+                        Object.entries(initialData).forEach(([k, v]) => dbRefs.fb.setDoc(dbRefs.getDocRef('carts', k), v).catch(e => {}));
+                    } else {
+                        setCartData(newCarts);
+                    }
+                    setCartsLoaded(true);
+                }, err => { console.error("Firestore Error:", err); setDataError('Equipment could not be loaded. Check your connection or account access.'); });
+
+                const unsubSettings = dbRefs.fb.onSnapshot(dbRefs.getDocRef('settings', 'main'), (snap) => {
+                    if (snap.exists()) {
+                        const data = snap.data();
+                        if (data.semesterConfig) {
+                            setSemesterConfig({ ...data.semesterConfig, maxAdvanceWeeks: data.semesterConfig.maxAdvanceWeeks || 2 });
+                            setTempSemesterConfig({ ...data.semesterConfig, maxAdvanceWeeks: data.semesterConfig.maxAdvanceWeeks || 2 });
+                        }
+                        if (data.allowSaturday !== undefined) setAllowSaturday(data.allowSaturday);
+                        setRecurringLocks(Array.isArray(data.recurringLocks) ? data.recurringLocks : []);
+                    } else {
+                        dbRefs.fb.setDoc(dbRefs.getDocRef('settings', 'main'), {
+                            semesterConfig: { startDate: '2026-02-23', totalWeeks: 19, maxAdvanceWeeks: 2 },
+                            allowSaturday: false
+                        }).catch(e => {});
+                    }
+                    setSemesterConfigLoaded(true);
+                }, err => { console.error("Firestore Error:", err); setDataError('Semester settings could not be loaded. Please try again.'); });
+
+                return () => { unsubCarts(); unsubSettings(); };
+            }, [firebaseReady, dbRefs, currentUser, isAdmin]);
+
+            // Admin-only 訂閱: Users（管理員登入即訂閱）
+            useEffect(() => {
+                if (!dbRefs || !isAdmin) return;
+
+                const unsubUsers = dbRefs.fb.onSnapshot(dbRefs.getCol('users'), (snap) => {
+                    const newUsers = {};
+                    snap.forEach(d => { newUsers[d.id] = d.data(); });
+
+                    if (snap.empty && !window.__seededUsers) {
+                        window.__seededUsers = true;
+                        Object.entries(initialUsers).forEach(([k, v]) => dbRefs.fb.setDoc(dbRefs.getDocRef('users', k), v).catch(e => {}));
+                    } else {
+                        setUsersDB(newUsers);
+                    }
+                });
+
+                return () => { unsubUsers(); };
+            }, [dbRefs, isAdmin]);
+
+            // 🔧 FIX [效能]: Logs 改為「懶載入」— 只在管理員切到 logs tab 時才訂閱
+            // 原本管理員一登入就 onSnapshot 訂閱 100 筆 logs（即使在看其他 tab），
+            // 每次有人操作都會觸發 snapshot，導致 Firestore 讀取次數飆高。
+            // 現在只在 adminTab === 'logs' 時才啟動即時訂閱，離開 tab 自動取消訂閱。
+            useEffect(() => {
+                if (!dbRefs || !isAdmin || currentView !== 'admin' || adminTab !== 'logs') {
+                    return;
+                }
+
+                const logsQuery = dbRefs.fb.query(
+                    dbRefs.getCol('logs'),
+                    dbRefs.fb.orderBy('createdAt', 'desc'),
+                    dbRefs.fb.limit(100)
+                );
+                const unsubLogs = dbRefs.fb.onSnapshot(logsQuery, (snap) => {
+                    let newLogs = [];
+                    snap.forEach(d => { newLogs.push({ id: d.id, ...d.data() }); });
+                    setActivityLogs(newLogs);
+                });
+
+                return () => { unsubLogs(); };
+            }, [dbRefs, isAdmin, currentView, adminTab]);
+
+            const parseLocalDate = (value) => {
+                if (!value) return null;
+                const parts = String(value).split(/[\/-]/).map(Number);
+                if (parts.length < 3 || parts.some(Number.isNaN)) return null;
+
+                const date = new Date(parts[0], parts[1] - 1, parts[2]);
+                if (isNaN(date.getTime())) return null;
+
+                date.setHours(0, 0, 0, 0);
+                return date;
+            };
+
+            const getTodayDate = () => {
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+                return today;
+            };
+
+            const getSlotDate = (weekNum, dayIdx) => {
+                const start = parseLocalDate(semesterConfig.startDate);
+                if (!start) return null;
+
+                const slotDate = new Date(start);
+                slotDate.setDate(slotDate.getDate() + (Number(weekNum) - 1) * 7 + Number(dayIdx));
+                return slotDate;
+            };
+
+            const isSlotBeforeToday = (weekNum, dayIdx) => {
+                const slotDate = getSlotDate(weekNum, dayIdx);
+                if (!slotDate) return false;
+                return slotDate < getTodayDate();
+            };
+
+            useEffect(() => {
+                if (!semesterConfigLoaded) return;
+
+                const now = getTodayDate();
+                const start = parseLocalDate(semesterConfig.startDate);
+                if (!start) return;
+                
+                const diffTime = now.getTime() - start.getTime();
+                const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+                let currentWeekCalc = Math.floor(diffDays / 7) + 1;
+                
+                if (currentWeekCalc < 1) currentWeekCalc = 1;
+                if (currentWeekCalc > semesterConfig.totalWeeks) currentWeekCalc = semesterConfig.totalWeeks;
+                
+                setCurrentRealWeek(currentWeekCalc);
+                setSelectedWeek(currentWeekCalc);
+            }, [semesterConfigLoaded, semesterConfig.startDate, semesterConfig.totalWeeks]);
+
+            useEffect(() => {
+                if (selectedWeek > semesterConfig.totalWeeks) setSelectedWeek(semesterConfig.totalWeeks);
+                setBatchSelection([]);
+            }, [selectedWeek, semesterConfig.totalWeeks]);
+
+            // =================================================================
+            // 🔧 FIX [效能]: 用 useMemo 快取計算結果
+            // 原本每次 render（包含與預約無關的 UI 操作如開關 modal）都重新跑
+            // 排序/過濾/我的預約計算。現在只在依賴資料真正變更時才重算。
+            // =================================================================
+            const sortedAllCarts = useMemo(() =>
+                Object.entries(cartData).sort((a, b) => (a[1].order || 0) - (b[1].order || 0)),
+                [cartData]
+            );
+
+            const filteredCarts = useMemo(() =>
+                sortedAllCarts
+                    .filter(([name, data]) => activeLocationFilter === 'All' || data.location === activeLocationFilter)
+                    .filter(([name, data]) => name.toLowerCase().includes(searchQuery.toLowerCase()) || (data.notes && data.notes.toLowerCase().includes(searchQuery.toLowerCase()))),
+                [sortedAllCarts, activeLocationFilter, searchQuery]
+            );
+
+            useEffect(() => {
+                if (!cartsLoaded) return;
+                if (!selectedCart || !cartData[selectedCart]) {
+                    setSelectedCart(sortedAllCarts[0]?.[0] || null);
+                    setBookingModal({ isOpen: false });
+                    setBatchSelection([]);
+                    setIsBatchMode(false);
+                }
+            }, [cartData, cartsLoaded, selectedCart, sortedAllCarts]);
+
+            const locations = useMemo(() =>
+                ['All', ...Array.from(new Set(Object.values(cartData).map(c => c.location).filter(Boolean)))],
+                [cartData]
+            );
+
+            const weeksArray = useMemo(() =>
+                Array.from({ length: semesterConfig.totalWeeks }, (_, i) => i + 1),
+                [semesterConfig.totalWeeks]
+            );
+            
+            const moveCart = async (cartName, direction) => {
+                const sortedNames = sortedAllCarts.map(arr => arr[0]);
+                const idx = sortedNames.indexOf(cartName);
+                if (direction === 'up' && idx > 0) [sortedNames[idx - 1], sortedNames[idx]] = [sortedNames[idx], sortedNames[idx - 1]];
+                else if (direction === 'down' && idx < sortedNames.length - 1) [sortedNames[idx + 1], sortedNames[idx]] = [sortedNames[idx], sortedNames[idx + 1]];
+                else return;
+                
+                try {
+                    const batch = dbRefs.fb.writeBatch(dbRefs.db);
+                    let hasChanges = false;
+                    for (let i = 0; i < sortedNames.length; i++) {
+                        const cName = sortedNames[i];
+                        if ((cartData[cName].order || 0) !== i) {
+                            batch.update(dbRefs.getDocRef('carts', cName), { order: i });
+                            hasChanges = true;
+                        }
+                    }
+                    if (hasChanges) await batch.commit();
+                } catch (e) {
+                    console.error("Move error:", e);
+                    showAlert("Failed to reorder carts.");
+                }
+            };
+
+            const getIcon = (type) => {
+                if (type === 'Chromebook') return <div className="w-12 h-12 bg-duo-blue/10 rounded-2xl flex items-center justify-center shrink-0"><i aria-hidden="true" className="fa-solid fa-laptop text-duo-blue text-2xl"></i></div>;
+                if (type === 'iPad') return <div className="w-12 h-12 bg-duo-green/10 rounded-2xl flex items-center justify-center shrink-0"><i aria-hidden="true" className="fa-solid fa-tablet-screen-button text-duo-green text-2xl"></i></div>;
+                return <div className="w-12 h-12 bg-duo-yellow/10 rounded-2xl flex items-center justify-center shrink-0"><i aria-hidden="true" className="fa-solid fa-desktop text-duo-yellow text-2xl"></i></div>;
+            };
+
+            const addLog = async (action, cart, details, specificUser = null) => {
+                const operator = isAdmin ? 'Admin' : (currentUser ? currentUser.name : 'Unknown');
+                const id = `${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+                const newLog = { 
+                    time: getTimestamp(), 
+                    operator: specificUser || operator, 
+                    action, 
+                    cart, 
+                    details,
+                    createdAt: dbRefs.fb.serverTimestamp() 
+                };
+                if (dbRefs) {
+                    try { await dbRefs.fb.setDoc(dbRefs.getDocRef('logs', id), newLog); }
+                    catch (error) { console.warn('Activity log could not be saved:', error); }
+                }
+            };
+
+            const getWeekDateRange = (weekNum, includeSat) => {
+                const start = parseLocalDate(semesterConfig.startDate);
+                if (!start) return "Invalid Date";
+                start.setDate(start.getDate() + (weekNum - 1) * 7);
+                const end = new Date(start);
+                end.setDate(end.getDate() + (includeSat ? 5 : 4)); 
+                return `${start.getMonth() + 1}/${start.getDate()} - ${end.getMonth() + 1}/${end.getDate()}`;
+            };
+
+            const getDateForDayIdx = (weekNum, dayIdx) => {
+                const date = getSlotDate(weekNum, dayIdx);
+                if (!date) return "";
+                return `${date.getMonth() + 1}/${date.getDate()}`;
+            };
+
+            const getWeekHeading = () => {
+                const start = getSlotDate(selectedWeek, 0), end = getSlotDate(selectedWeek, allowSaturday ? 5 : 4);
+                if (!start || !end) return '';
+                const first = start.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                const last = start.getMonth() === end.getMonth() ? end.getDate() : end.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                return `${first} - ${last}, ${end.getFullYear()}`;
+            };
+
+            const getSafeQuantity = (value, fallback = 1) => {
+                const parsed = Number(value);
+                if (!Number.isFinite(parsed)) return fallback;
+                return Math.max(1, Math.floor(parsed));
+            };
+
+            const getBookingQuantity = (booking) => getSafeQuantity(booking?.quantity, 1);
+
+            const getCartCapacity = (cartOrData) => {
+                const data = typeof cartOrData === 'string' ? cartData[cartOrData] : cartOrData;
+                return getSafeQuantity(data?.capacity, 1);
+            };
+
+            const normalizeSlotBookings = (slotValue) => {
+                if (!slotValue) return [];
+
+                if (Array.isArray(slotValue.bookings)) {
+                    return slotValue.bookings
+                        .filter(Boolean)
+                        .map((booking, index) => ({
+                            ...booking,
+                            id: booking.id || `legacy_${index}`,
+                            quantity: getBookingQuantity(booking)
+                        }));
+                }
+
+                return [{
+                    ...slotValue,
+                    id: slotValue.id || 'legacy',
+                    quantity: getBookingQuantity(slotValue)
+                }];
+            };
+
+            const getSlotUsedQuantity = (slotValue) =>
+                normalizeSlotBookings(slotValue).reduce((total, booking) => total + getBookingQuantity(booking), 0);
+
+            const getSlotRemainingQuantity = (cartName, slotId, scheduleOverride = null) => {
+                const cart = cartData[cartName] || {};
+                const schedule = scheduleOverride || cart.schedule || {};
+                return Math.max(0, getCartCapacity(cart) - getSlotUsedQuantity(schedule[slotId]));
+            };
+
+            const makeBookingId = () => `booking_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+
+            const setSlotBookings = (schedule, slotId, bookings) => {
+                const cleanedBookings = bookings
+                    .filter(Boolean)
+                    .map((booking) => ({
+                        id: booking.id || makeBookingId(),
+                        name: booking.name || '',
+                        email: booking.email || booking.ownerEmail || '',
+                        className: booking.className || '',
+                        ownerEmail: booking.ownerEmail || booking.email || '',
+                        quantity: getBookingQuantity(booking),
+                        createdAt: booking.createdAt || getTimestamp()
+                    }));
+
+                if (cleanedBookings.length === 0) {
+                    delete schedule[slotId];
+                } else {
+                    schedule[slotId] = { bookings: cleanedBookings };
+                }
+            };
+
+            const findBookingIndex = (bookings, bookingId) => {
+                const targetId = String(bookingId || 'legacy');
+                return bookings.findIndex((booking, index) => {
+                    const currentId = String(booking.id || (index === 0 ? 'legacy' : `legacy_${index}`));
+                    return currentId === targetId;
+                });
+            };
+
+            const getDefaultSubject = (user) => {
+                if (!user) return '';
+                return user.defaultClass === 'Other (Specify)' ? (user.customClass || '') : (user.defaultClass || '');
+            };
+
+            const createDefaultBookForm = (quantity) => ({
+                name: currentUser?.name || '',
+                subject: getDefaultSubject(currentUser),
+                quantity: Math.max(1, getSafeQuantity(quantity, 1))
+            });
+
+            const handleSaturdayToggle = async (e) => {
+                const newVal = e.target.checked;
+                setAllowSaturday(newVal); 
+                if (dbRefs) {
+                    await dbRefs.fb.setDoc(dbRefs.getDocRef('settings', 'main'), { allowSaturday: newVal }, { merge: true });
+                    addLog(newVal ? "Enable Saturday" : "Disable Saturday", "System", "Admin toggled Saturday booking setting");
+                }
+            };
+
+            // 🔧 FIX [安全]: Google 登入流程
+            // signInWithPopup 成功後，onAuthStateChanged 會自動觸發 session 恢復。
+            // 這裡只需要處理 Canvas 環境模擬登入和登入失敗的情況。
+            const handleGoogleLogin = async () => {
+                const ADMIN_EMAIL = 'ptaopenhour@ibsh.tw';
+
+                if (isCanvasEnv) {
+                    const testEmail = prompt(`【預覽環境模擬登入】\n\n請輸入你想模擬驗證的信箱:\n(最高權限管理員請輸入 ${ADMIN_EMAIL})`, ADMIN_EMAIL);
+                    if (!testEmail) return;
+
+                    if (testEmail.trim() === ADMIN_EMAIL) {
+                        setIsAdmin(true);
+                        setCurrentUser({ name: 'System Admin', email: ADMIN_EMAIL, defaultClass: 'Admin', customClass: '' });
+                        goHome();
+                        return;
+                    }
+
+                    const userDocRef = dbRefs.getDocRef('users', testEmail.trim());
+                    const userDoc = await dbRefs.fb.getDoc(userDocRef);
+                    if (userDoc.exists()) {
+                        setCurrentUser(userDoc.data());
+                        setIsAdmin(false);
+                        goHome();
+                    } else {
+                        showAlert(`Access Denied.\nYour account (${testEmail}) is not in the allowed whitelist.`);
+                    }
+                    return;
+                }
+
+                try {
+                    const provider = new dbRefs.fb.GoogleAuthProvider();
+                    const result = await dbRefs.fb.signInWithPopup(dbRefs.auth, provider);
+                    const userEmail = result.user.email;
+
+                    // onAuthStateChanged 會自動處理 session 恢復，
+                    // 但如果白名單中沒有此帳號，需要立即登出並顯示錯誤。
+                    if (userEmail !== ADMIN_EMAIL) {
+                        const userDocRef = dbRefs.getDocRef('users', userEmail);
+                        const userDoc = await dbRefs.fb.getDoc(userDocRef);
+                        if (!userDoc.exists()) {
+                            await dbRefs.fb.signOut(dbRefs.auth);
+                            setCurrentUser(null);
+                            setIsAdmin(false);
+                            showAlert(`Access Denied.\nYour email (${userEmail}) is not registered in the whitelist.\nPlease contact the administrator.`);
+                        }
+                    }
+                    // 如果驗證通過，onAuthStateChanged 已經設好 currentUser & isAdmin
+                } catch (error) {
+                    console.error(error);
+                    if (error.code !== 'auth/popup-closed-by-user') {
+                        showAlert(`Google Login Failed: ${error.message}`);
+                    }
+                }
+            };
+
+            const handleAdminAddUser = async (e) => {
+                e.preventDefault();
+                const email = addUserForm.email.trim();
+                try {
+                    const existingDoc = await dbRefs.fb.getDoc(dbRefs.getDocRef('users', email));
+                    if (existingDoc.exists()) {
+                        return showAlert("This email is already registered in the whitelist!");
+                    }
+                    const newUser = {
+                        name: addUserForm.name.trim(), 
+                        email: email, 
+                        defaultClass: addUserForm.classType, 
+                        customClass: addUserForm.customClass
+                    };
+                    await dbRefs.fb.setDoc(dbRefs.getDocRef('users', email), newUser);
+                    addLog("Add User", "System", `Admin added user to whitelist: ${email}`);
+                    showAlert("Teacher added to the whitelist successfully!");
+                    setAddUserForm({ name: '', email: '', classType: '1A', customClass: '' });
+                    setAdminAddUserModal({ isOpen: false });
+                } catch(err) {
+                    console.error(err);
+                    showAlert("Failed to add user.");
+                }
+            };
+
+            const handleSemesterConfigSave = async (e) => {
+                e.preventDefault();
+                await dbRefs.fb.setDoc(dbRefs.getDocRef('settings', 'main'), { semesterConfig: tempSemesterConfig }, { merge: true });
+                addLog("Update Config", "System", `Start Date: ${tempSemesterConfig.startDate}, Total Weeks: ${tempSemesterConfig.totalWeeks}, Advance: ${tempSemesterConfig.maxAdvanceWeeks}W`);
+                showAlert("Semester configuration updated successfully!");
+            };
+
+            const handleClearSemesterData = () => {
+                showConfirm("⚠️ WARNING: Are you sure you want to clear ALL booking records?\n\nThis action cannot be undone!", async () => {
+                    try {
+                        const batch = dbRefs.fb.writeBatch(dbRefs.db);
+                        for (const cartName of Object.keys(cartData)) {
+                            batch.update(dbRefs.getDocRef('carts', cartName), { schedule: {} });
+                        }
+                        await batch.commit();
+                        
+                        setSelectedWeek(1);
+                        addLog("Clear Data", "System", "Admin cleared all booking records (New Semester)");
+                        showAlert("All booking data has been cleared!");
+                    } catch (error) {
+                        console.error("Batch clear error:", error);
+                        showAlert("Failed to clear all data due to a network error. Please try again.");
+                    }
+                });
+            };
+
+            const getLockForSlot = (cartName, week, dayIdx, periodId) => {
+                if (periodId === 'lunch') return null;
+                return recurringLocks.find(lock =>
+                    lock.cartName === cartName &&
+                    Number(lock.dayIdx) === Number(dayIdx) &&
+                    String(lock.periodId) === String(periodId) &&
+                    week >= Number(lock.startWeek) &&
+                    week < Number(lock.startWeek) + Number(lock.weeks)
+                ) || null;
+            };
+
+            const saveLock = async (e) => {
+                e.preventDefault();
+                const formData = new FormData(e.target);
+                const lockData = {
+                    id: lockModal.lockId || `lock_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+                    name: formData.get('name').trim() || 'Locked',
+                    cartName: formData.get('cartName'),
+                    dayIdx: Number(formData.get('dayIdx')),
+                    periodId: formData.get('periodId'),
+                    startWeek: Number(formData.get('startWeek')),
+                    weeks: Number(formData.get('weeks'))
+                };
+
+                if (!lockData.cartName) { showAlert("請選擇一個 Cart。"); return; }
+                if (lockData.weeks < 1) { showAlert("持續週數必須至少 1 週。"); return; }
+
+                try {
+                    const newLocks = lockModal.lockId
+                        ? recurringLocks.map(l => l.id === lockModal.lockId ? lockData : l)
+                        : [...recurringLocks, lockData];
+
+                    await dbRefs.fb.setDoc(dbRefs.getDocRef('settings', 'main'), { recurringLocks: newLocks }, { merge: true });
+
+                    const cartRef = dbRefs.getDocRef('carts', lockData.cartName);
+                    await dbRefs.fb.runTransaction(dbRefs.db, async (transaction) => {
+                        const cartDoc = await transaction.get(cartRef);
+                        if (!cartDoc.exists()) return;
+                        const schedule = cartDoc.data().schedule || {};
+                        let changed = false;
+                        for (let w = lockData.startWeek; w < lockData.startWeek + lockData.weeks; w++) {
+                            const slotId = `w${w}_d${lockData.dayIdx}_p${lockData.periodId}`;
+                            if (schedule[slotId]) { delete schedule[slotId]; changed = true; }
+                        }
+                        if (changed) transaction.update(cartRef, { schedule });
+                    });
+
+                    addLog(lockModal.lockId ? "Edit Lock" : "Add Lock", lockData.cartName, `${lockData.name} · Wk${lockData.startWeek}-${lockData.startWeek + lockData.weeks - 1} · ${currentDays[lockData.dayIdx] || `Day${lockData.dayIdx}`} P${lockData.periodId}`);
+                    setLockModal({ isOpen: false, lockId: null, data: null });
+                } catch (err) {
+                    console.error("Save lock error:", err);
+                    showAlert("儲存鎖定失敗，請稍後再試。");
+                }
+            };
+
+            const deleteLock = (lockId) => {
+                const lock = recurringLocks.find(l => l.id === lockId);
+                if (!lock) return;
+                showConfirm(`確定要刪除鎖定「${lock.name}」嗎？`, async () => {
+                    try {
+                        const newLocks = recurringLocks.filter(l => l.id !== lockId);
+                        await dbRefs.fb.setDoc(dbRefs.getDocRef('settings', 'main'), { recurringLocks: newLocks }, { merge: true });
+                        addLog("Delete Lock", lock.cartName, `${lock.name} · Wk${lock.startWeek}-${lock.startWeek + lock.weeks - 1}`);
+                    } catch (err) {
+                        console.error("Delete lock error:", err);
+                        showAlert("刪除鎖定失敗，請稍後再試。");
+                    }
+                });
+            };
+
+            const deleteUser = (email) => {
+                showConfirm(`Delete user ${usersDB[email].name} from whitelist?\nThey will no longer be able to log in.`, async () => {
+                    await dbRefs.fb.deleteDoc(dbRefs.getDocRef('users', email));
+                    addLog("Delete User", "System", `Admin removed account from whitelist: ${email}`);
+                });
+            };
+
+            const handleSlotClick = (dayIdx, periodId, existingBooking) => {
+                if (bookingBusy.current || !semesterConfigLoaded || !cartsLoaded || dataError) return;
+                if (periodId === 'lunch') return;
+                const slotId = `w${selectedWeek}_d${dayIdx}_p${periodId}`;
+
+                const lock = getLockForSlot(selectedCart, selectedWeek, dayIdx, periodId);
+                if (lock) {
+                    showAlert(`🔒 此時段已被鎖定\n\n名稱：${lock.name}\n期間：第 ${lock.startWeek} - ${lock.startWeek + lock.weeks - 1} 週`);
+                    return;
+                }
+
+                const isPastSlot = isSlotBeforeToday(selectedWeek, dayIdx);
+
+                const isPastLimit = !isAdmin && (selectedWeek > currentRealWeek + (semesterConfig.maxAdvanceWeeks || 2));
+                if (isPastLimit) {
+                    showAlert(`⚠️ Booking Limit Exceeded\n\nTo ensure fairness, the system only allows bookings up to ${semesterConfig.maxAdvanceWeeks || 2} week(s) in advance.\nPlease try again closer to your desired date!`);
+                    return;
+                }
+
+                if (existingBooking) {
+                    setBookingModal({ isOpen: true, dayIdx, periodId, existingBooking, isEditing: false, isBatch: false, isPast: isPastSlot });
+                } else {
+                    if (isPastSlot && !isAdmin) {
+                        showAlert("⚠️ Cannot book slots in the past!");
+                        return;
+                    }
+
+                    const remainingQuantity = getSlotRemainingQuantity(selectedCart, slotId);
+                    if (remainingQuantity <= 0) {
+                        showAlert("這個時段的設備數量已經被借滿了。");
+                        return;
+                    }
+
+                    if (isBatchMode) {
+                        setBatchSelection(prev => 
+                            prev.some(s => s.slotId === slotId) 
+                                ? prev.filter(s => s.slotId !== slotId) 
+                                : [...prev, { dayIdx, periodId, slotId }]
+                        );
+                    } else {
+                        setBookForm(createDefaultBookForm(remainingQuantity));
+                        setBookingModal({ isOpen: true, dayIdx, periodId, existingBooking: null, isEditing: false, isBatch: false, isPast: false });
+                    }
+                }
+            };
+
+            const renderScheduleSlot = (dayIdx, period) => {
+                const slotId = `w${selectedWeek}_d${dayIdx}_p${period.id}`;
+                const lock = getLockForSlot(selectedCart, selectedWeek, dayIdx, period.id);
+                const bookings = normalizeSlotBookings(cartData[selectedCart]?.schedule?.[slotId]);
+                const remaining = getSlotRemainingQuantity(selectedCart, slotId);
+                const isPast = isSlotBeforeToday(selectedWeek, dayIdx);
+                const beyondLimit = !isAdmin && selectedWeek > currentRealWeek + (semesterConfig.maxAdvanceWeeks || 2);
+                const canBook = remaining > 0 && (!isPast || isAdmin) && !beyondLimit && !isSaving;
+                const selected = batchSelection.some(slot => slot.slotId === slotId) ||
+                    (bookingModal.isOpen && !bookingModal.isBatch && bookingModal.dayIdx === dayIdx && bookingModal.periodId === period.id);
+                const label = `${selectedCart}, ${currentDays[dayIdx]} ${getDateForDayIdx(selectedWeek, dayIdx)}, Period ${period.id}`;
+
+                if (lock) return (
+                    <button type="button" className="slot-locked" aria-label={`${label}, locked: ${lock.name}`} onClick={() => handleSlotClick(dayIdx, period.id, null)}>
+                        <Icon name="lock" /><span>{lock.name}</span><small>Unavailable</small>
+                    </button>
+                );
+
+                return (
+                    <div className={`slot ${isPast ? 'past' : ''} ${selected ? 'selected' : ''}`} data-slot={slotId}>
+                        {bookings.length > 0 && <div className="slot-events">
+                            {bookings.map((booking, index) => {
+                                const mine = booking.ownerEmail === currentUser?.email;
+                                return <button type="button" key={booking.id || index}
+                                    disabled={isSaving || isBatchMode}
+                                    className={`booking-strip ${mine ? 'mine' : ''}`}
+                                    title={`${booking.name} · ${booking.className} · ${getBookingQuantity(booking)} devices`}
+                                    aria-label={`View booking: ${booking.name}, ${booking.className}, ${getBookingQuantity(booking)} devices, ${label}`}
+                                    onClick={() => handleSlotClick(dayIdx, period.id, booking)}>
+                                    <strong>{booking.name} · {booking.className}</strong>
+                                    <small>{getBookingQuantity(booking)} devices</small>
+                                </button>;
+                            })}
+                        </div>}
+                        <button type="button" className={`slot-availability ${bookings.length ? 'with-events' : ''}`}
+                            disabled={!canBook}
+                            aria-label={`${isBatchMode ? 'Select' : 'Book'} ${label}, ${remaining} available`}
+                            aria-pressed={isBatchMode ? selected : undefined}
+                            onClick={() => handleSlotClick(dayIdx, period.id, null)}>
+                            {selected && <Icon name={isBatchMode ? 'check' : 'plus'} />}
+                            {isPast && !isAdmin ? 'Past' : beyondLimit ? 'Not yet open' : remaining === 0 ? 'Fully booked' : isBatchMode && selected ? `Selected · ${remaining} available` : `${remaining} available`}
+                        </button>
+                    </div>
+                );
+            };
+
+            const executeBookingTransaction = async (slotsToBook, bookingName, finalSubject, requestedQuantity) => {
+                if (bookingBusy.current || slotsToBook.length === 0) return;
+                bookingBusy.current = true;
+                setIsSaving(true);
+                const cartRef = dbRefs.getDocRef('carts', selectedCart);
+                const quantity = getSafeQuantity(requestedQuantity, 1);
+
+                try {
+                    await dbRefs.fb.runTransaction(dbRefs.db, async (transaction) => {
+                        const cartDoc = await transaction.get(cartRef);
+                        if (!cartDoc.exists()) throw "CART_NOT_FOUND";
+
+                        const currentData = cartDoc.data();
+                        const currentSchedule = currentData.schedule || {};
+                        const capacity = getSafeQuantity(currentData.capacity, 1);
+
+                        for (const slot of slotsToBook) {
+                            if (getLockForSlot(selectedCart, selectedWeek, slot.dayIdx, slot.periodId)) {
+                                throw "SLOT_LOCKED";
+                            }
+                            const slotBookings = normalizeSlotBookings(currentSchedule[slot.slotId]);
+                            const usedQuantity = slotBookings.reduce((total, booking) => total + getBookingQuantity(booking), 0);
+                            if (usedQuantity + quantity > capacity) {
+                                throw "INSUFFICIENT_QUANTITY";
+                            }
+                            slotBookings.push({
+                                id: makeBookingId(),
+                                name: bookingName, email: currentUser.email, 
+                                className: finalSubject, ownerEmail: currentUser.email,
+                                quantity,
+                                createdAt: getTimestamp()
+                            });
+                            setSlotBookings(currentSchedule, slot.slotId, slotBookings);
+                        }
+                        transaction.update(cartRef, { schedule: currentSchedule });
+                    });
+
+                    const details = slotsToBook.length === 1 
+                        ? `Week ${selectedWeek} ${currentDays[slotsToBook[0].dayIdx]} P${slotsToBook[0].periodId} (${finalSubject}, ${quantity} devices)`
+                        : `Batch booked ${slotsToBook.length} slots for Week ${selectedWeek} (${finalSubject}, ${quantity} devices each)`;
+                    
+                    addLog("Add Booking", selectedCart, details);
+                    setBookingModal({ isOpen: false, dayIdx: null, periodId: null, existingBooking: null, isEditing: false, isBatch: false });
+                    setBatchSelection([]);
+                    setIsBatchMode(false);
+                    setToast(slotsToBook.length > 1 ? `${slotsToBook.length} reservations confirmed.` : 'Reservation confirmed.');
+                    
+                } catch (error) {
+                    if (error === "INSUFFICIENT_QUANTITY") showAlert("可借數量不足！你選的數量超過其中一個時段的剩餘台數，請調整數量後再試。");
+                    else if (error === "SLOT_LOCKED") showAlert("🔒 你選的時段中包含已被鎖定的格子，無法預約。");
+                    else if (error === "CART_NOT_FOUND") showAlert("找不到該設備，可能已被管理員刪除。");
+                    else showAlert("預約發生錯誤，請稍後檢查網路連線再試。");
+                } finally {
+                    bookingBusy.current = false;
+                    setIsSaving(false);
+                }
+            };
+
+            const checkConflictsAndSubmit = async () => {
+                if (bookingBusy.current) return;
+                const bookingName = bookForm.name.trim();
+                const finalSubject = bookForm.subject.trim();
+                const requestedQuantity = getSafeQuantity(bookForm.quantity, 1);
+                const slotsToBook = bookingModal.isBatch ? batchSelection : [{ dayIdx: bookingModal.dayIdx, periodId: bookingModal.periodId, slotId: `w${selectedWeek}_d${bookingModal.dayIdx}_p${bookingModal.periodId}` }];
+
+                if (!bookingName) {
+                    showAlert("Please enter a name.");
+                    return;
+                }
+
+                if (!finalSubject) {
+                    showAlert("Please enter a subject.");
+                    return;
+                }
+
+                const insufficientSlot = slotsToBook.find(slot => getSlotRemainingQuantity(selectedCart, slot.slotId) < requestedQuantity);
+                if (insufficientSlot) {
+                    const remaining = getSlotRemainingQuantity(selectedCart, insufficientSlot.slotId);
+                    showAlert(`這個時段只剩 ${remaining} 台可借，請調整借用數量。`);
+                    return;
+                }
+                
+                const conflictingSlots = slotsToBook.filter(slot => {
+                    return Object.entries(cartData).some(([cName, cData]) => {
+                        return cName !== selectedCart && normalizeSlotBookings(cData.schedule?.[slot.slotId]).some(booking => booking.className === finalSubject);
+                    });
+                });
+
+                if (conflictingSlots.length > 0) {
+                    showConfirm(`[Duplicate Booking Warning]\nSubject "${finalSubject}" has already reserved other equipment during this time slot.\nAre you sure you want to proceed with this additional booking?`, () => {
+                        executeBookingTransaction(slotsToBook, bookingName, finalSubject, requestedQuantity);
+                    });
+                } else {
+                    executeBookingTransaction(slotsToBook, bookingName, finalSubject, requestedQuantity);
+                }
+            };
+
+            // =================================================================
+            // 🔧 FIX [衝突]: cancelBooking 改用 runTransaction
+            // 原本用 updateDoc + deleteField，如果 Admin 同時在編輯同一筆預約，
+            // 可能產生 Race Condition。改用 Transaction 確保讀寫原子性，並在預約
+            // 已被取消時給予明確的錯誤訊息而不是靜默失敗。
+            // =================================================================
+            const cancelBooking = async () => {
+                if (bookingBusy.current) return;
+                bookingBusy.current = true;
+                setIsSaving(true);
+                const slotId = `w${selectedWeek}_d${bookingModal.dayIdx}_p${bookingModal.periodId}`;
+                const cartRef = dbRefs.getDocRef('carts', selectedCart);
+                
+                try {
+                    let cancelledName = '';
+                    await dbRefs.fb.runTransaction(dbRefs.db, async (transaction) => {
+                        const cartDoc = await transaction.get(cartRef);
+                        if (!cartDoc.exists()) throw "CART_NOT_FOUND";
+                        
+                        const currentSchedule = cartDoc.data().schedule || {};
+                        if (!currentSchedule[slotId]) throw "ALREADY_CANCELLED";
+                        const slotBookings = normalizeSlotBookings(currentSchedule[slotId]);
+                        const bookingIndex = findBookingIndex(slotBookings, bookingModal.existingBooking?.id);
+                        if (bookingIndex === -1) throw "ALREADY_CANCELLED";
+                        const targetBooking = slotBookings[bookingIndex];
+                        
+                        // 非管理員只能取消自己的預約
+                        if (!isAdmin && targetBooking.ownerEmail !== currentUser.email) {
+                            throw "NOT_OWNER";
+                        }
+                        
+                        cancelledName = `${targetBooking.name} (${getBookingQuantity(targetBooking)} devices)`;
+                        slotBookings.splice(bookingIndex, 1);
+                        setSlotBookings(currentSchedule, slotId, slotBookings);
+                        transaction.update(cartRef, { schedule: currentSchedule });
+                    });
+
+                    const actionName = isAdmin ? "Force Cancel" : "Cancel Booking";
+                    addLog(actionName, selectedCart, `Week ${selectedWeek} ${currentDays[bookingModal.dayIdx]} P${bookingModal.periodId} (${cancelledName})`);
+                    setBookingModal({ isOpen: false });
+                    setToast('Reservation cancelled.');
+                } catch (error) {
+                    if (error === "ALREADY_CANCELLED") showAlert("這筆預約已經被取消了。");
+                    else if (error === "NOT_OWNER") showAlert("你只能取消自己的預約。");
+                    else if (error === "CART_NOT_FOUND") showAlert("找不到該設備。");
+                    else showAlert("取消失敗，請稍後再試。");
+                } finally {
+                    bookingBusy.current = false;
+                    setIsSaving(false);
+                }
+            };
+
+            const handleEditClick = () => {
+                const existing = bookingModal.existingBooking;
+                setEditBookForm({
+                    name: existing.name, email: existing.email,
+                    subject: existing.className,
+                    quantity: getBookingQuantity(existing)
+                });
+                setBookingModal(prev => ({ ...prev, isEditing: true }));
+            };
+
+            const updateBooking = async () => {
+                if (bookingBusy.current) return;
+                const slotId = `w${selectedWeek}_d${bookingModal.dayIdx}_p${bookingModal.periodId}`;
+                const finalSubject = editBookForm.subject.trim();
+                const updatedName = editBookForm.name.trim();
+                const requestedQuantity = getSafeQuantity(editBookForm.quantity, 1);
+                const cartRef = dbRefs.getDocRef('carts', selectedCart);
+
+                if (!updatedName) {
+                    showAlert("Please enter a name.");
+                    return;
+                }
+
+                if (!finalSubject) {
+                    showAlert("Please enter a subject.");
+                    return;
+                }
+
+                bookingBusy.current = true;
+                setIsSaving(true);
+                try {
+                    await dbRefs.fb.runTransaction(dbRefs.db, async (transaction) => {
+                        const cartDoc = await transaction.get(cartRef);
+                        if (!cartDoc.exists()) throw "CART_NOT_FOUND";
+
+                        const currentData = cartDoc.data();
+                        const currentSchedule = currentData.schedule || {};
+                        const capacity = getSafeQuantity(currentData.capacity, 1);
+
+                        if (!currentSchedule[slotId]) {
+                            throw "SLOT_NOT_FOUND"; 
+                        }
+                        const slotBookings = normalizeSlotBookings(currentSchedule[slotId]);
+                        const bookingIndex = findBookingIndex(slotBookings, bookingModal.existingBooking?.id);
+                        if (bookingIndex === -1) throw "SLOT_NOT_FOUND";
+                        if (!isAdmin && slotBookings[bookingIndex].ownerEmail !== currentUser.email) {
+                            throw "NOT_OWNER";
+                        }
+
+                        const originalQuantity = getBookingQuantity(slotBookings[bookingIndex]);
+                        const usedWithoutThisBooking = slotBookings.reduce((total, booking) => total + getBookingQuantity(booking), 0) - originalQuantity;
+                        if (usedWithoutThisBooking + requestedQuantity > capacity) {
+                            throw "INSUFFICIENT_QUANTITY";
+                        }
+
+                        slotBookings[bookingIndex] = { 
+                            ...slotBookings[bookingIndex],
+                            name: updatedName, 
+                            email: isAdmin ? editBookForm.email : slotBookings[bookingIndex].email, 
+                            className: finalSubject, 
+                            ownerEmail: isAdmin ? editBookForm.email : slotBookings[bookingIndex].ownerEmail,
+                            quantity: requestedQuantity
+                        };
+                        setSlotBookings(currentSchedule, slotId, slotBookings);
+                        
+                        transaction.update(cartRef, { schedule: currentSchedule });
+                    });
+
+                    addLog(isAdmin ? "Admin Edit" : "Edit Booking", selectedCart, `Week ${selectedWeek} ${currentDays[bookingModal.dayIdx]} P${bookingModal.periodId} (Updated: ${updatedName}, ${requestedQuantity} devices)`);
+                    setBookingModal({ isOpen: false, dayIdx: null, periodId: null, existingBooking: null, isEditing: false, isBatch: false });
+                    setToast('Reservation updated.');
+                } catch (error) {
+                    if (error === "SLOT_NOT_FOUND") showAlert("這筆預約似乎已經被使用者手動取消了！請重新確認設備狀態。");
+                    else if (error === "INSUFFICIENT_QUANTITY") showAlert("更新後的數量超過此時段可用台數。");
+                    else if (error === "NOT_OWNER") showAlert("你只能修改自己的預約。");
+                    else if (error === "CART_NOT_FOUND") showAlert("找不到該設備。");
+                    else showAlert("更新失敗，請稍後再試。");
+                } finally {
+                    bookingBusy.current = false;
+                    setIsSaving(false);
+                }
+            };
+
+            const saveCartEdit = async (e) => {
+                e.preventDefault();
+                const formData = new FormData(e.target);
+                const oldName = editCartModal.cartName;
+                const newName = formData.get('name').trim();
+
+                try {
+                    if (oldName && oldName === newName) {
+                        await dbRefs.fb.updateDoc(dbRefs.getDocRef('carts', newName), {
+                            type: formData.get('type'), 
+                            location: formData.get('location'), 
+                            capacity: parseInt(formData.get('capacity')), 
+                            notes: formData.get('notes')
+                        });
+                    } else if (oldName && oldName !== newName) {
+                        await dbRefs.fb.runTransaction(dbRefs.db, async (transaction) => {
+                            const oldDocRef = dbRefs.getDocRef('carts', oldName);
+                            const newDocRef = dbRefs.getDocRef('carts', newName);
+                            const oldDoc = await transaction.get(oldDocRef);
+                            
+                            if (!oldDoc.exists()) throw "CART_NOT_FOUND";
+                            
+                            const latestData = oldDoc.data();
+                            const newData = {
+                                ...latestData,
+                                type: formData.get('type'), 
+                                location: formData.get('location'), 
+                                capacity: parseInt(formData.get('capacity')), 
+                                notes: formData.get('notes')
+                            };
+                            
+                            transaction.set(newDocRef, newData);
+                            transaction.delete(oldDocRef);
+                        });
+                    } else {
+                        const newData = {
+                            type: formData.get('type'), location: formData.get('location'), capacity: parseInt(formData.get('capacity')), notes: formData.get('notes'),
+                            schedule: {},
+                            order: Object.keys(cartData).length
+                        };
+                        await dbRefs.fb.setDoc(dbRefs.getDocRef('carts', newName), newData);
+                    }
+                    
+                    addLog(oldName ? "Edit Equipment" : "Add Equipment", "System", `Equipment: ${newName}`);
+                    setEditCartModal({ isOpen: false, cartName: null, data: null });
+                } catch (err) {
+                    console.error("Save cart error:", err);
+                    if (err === "CART_NOT_FOUND") showAlert("The cart you are trying to edit was not found or was deleted.");
+                    else showAlert("Failed to save equipment. Please try again.");
+                }
+            };
+
+            const deleteCart = (name) => {
+                showConfirm(`Delete "${name}"?\nThis clears all its bookings.`, async () => {
+                    await dbRefs.fb.deleteDoc(dbRefs.getDocRef('carts', name));
+                    addLog("Delete Equipment", "System", `Equipment: ${name}`);
+                    if (selectedCart === name) setSelectedCart(null);
+                });
+            };
+
+            // =================================================================
+            // 🔧 FIX [效能]: getMyBookings 改用 useMemo 快取
+            // 原本每次 render 都重新遍歷所有 cart 的所有 schedule entries。
+            // 現在只在 cartData 或 currentUser 變更時才重算。
+            // =================================================================
+            const allMyBookings = useMemo(() => {
+                const myBookings = [];
+                if (!currentUser) return myBookings;
+                
+                Object.entries(cartData).forEach(([cartName, data]) => {
+                    if (data.schedule) {
+                        Object.entries(data.schedule).forEach(([slotId, slotValue]) => {
+                            normalizeSlotBookings(slotValue).forEach((bookingInfo) => {
+                                if (bookingInfo.ownerEmail !== currentUser.email) return;
+                                const match = slotId.match(/w(\d+)_d(\d+)_p(\w+)/);
+                                if (match) {
+                                    myBookings.push({
+                                        cartName,
+                                        week: parseInt(match[1]),
+                                        dayIdx: parseInt(match[2]),
+                                        periodId: match[3],
+                                        slotId,
+                                        bookingId: bookingInfo.id,
+                                        className: bookingInfo.className,
+                                        quantity: getBookingQuantity(bookingInfo)
+                                    });
+                                }
+                            });
+                        });
+                    }
+                });
+
+                myBookings.sort((a, b) => {
+                    if (a.week !== b.week) return a.week - b.week;
+                    if (a.dayIdx !== b.dayIdx) return a.dayIdx - b.dayIdx;
+                    return periods.findIndex(p => p.id == a.periodId) - periods.findIndex(p => p.id == b.periodId);
+                });
+                return myBookings;
+            }, [cartData, currentUser]);
+
+            // 🔧 FIX [衝突]: cancelBookingFromList 也改用 runTransaction
+            const cancelBookingFromList = (cartName, slotId, className, bookingId) => {
+                showConfirm(`Are you sure you want to cancel this booking for ${cartName}?`, async () => {
+                    const cartRef = dbRefs.getDocRef('carts', cartName);
+                    
+                    try {
+                        await dbRefs.fb.runTransaction(dbRefs.db, async (transaction) => {
+                            const cartDoc = await transaction.get(cartRef);
+                            if (!cartDoc.exists()) throw "CART_NOT_FOUND";
+                            
+                            const currentSchedule = cartDoc.data().schedule || {};
+                            if (!currentSchedule[slotId]) throw "ALREADY_CANCELLED";
+                            const slotBookings = normalizeSlotBookings(currentSchedule[slotId]);
+                            const bookingIndex = bookingId
+                                ? findBookingIndex(slotBookings, bookingId)
+                                : slotBookings.findIndex(booking => booking.ownerEmail === currentUser.email && booking.className === className);
+                            if (bookingIndex === -1) throw "ALREADY_CANCELLED";
+                            const targetBooking = slotBookings[bookingIndex];
+                            
+                            if (!isAdmin && targetBooking.ownerEmail !== currentUser.email) {
+                                throw "NOT_OWNER";
+                            }
+                            
+                            slotBookings.splice(bookingIndex, 1);
+                            setSlotBookings(currentSchedule, slotId, slotBookings);
+                            transaction.update(cartRef, { schedule: currentSchedule });
+                        });
+                        
+                        const match = slotId.match(/w(\d+)_d(\d+)_p(\w+)/);
+                        if (match) addLog("Cancel Booking", cartName, `W${match[1]} ${currentDays[parseInt(match[2])]} P${match[3]} (${className})`);
+                    } catch (error) {
+                        if (error === "ALREADY_CANCELLED") showAlert("這筆預約已經被取消了。");
+                        else if (error === "NOT_OWNER") showAlert("你只能取消自己的預約。");
+                        else if (error === "CART_NOT_FOUND") showAlert("找不到該設備。");
+                        else showAlert("取消失敗，請稍後再試。");
+                    }
+                });
+            };
+
+            const upcomingBookings = useMemo(() =>
+                allMyBookings.filter(b => !isSlotBeforeToday(b.week, b.dayIdx)),
+                [allMyBookings, semesterConfig.startDate, currentRealWeek]
+            );
+            const historyBookings = useMemo(() =>
+                allMyBookings.filter(b => isSlotBeforeToday(b.week, b.dayIdx)),
+                [allMyBookings, semesterConfig.startDate, currentRealWeek]
+            );
+            const displayedBookings = myBookingsTab === 'upcoming' ? upcomingBookings : historyBookings;
+            const openMyBooking = booking => {
+                const existing = normalizeSlotBookings(cartData[booking.cartName]?.schedule?.[booking.slotId]).find(item => item.id === booking.bookingId);
+                if (!existing) return showAlert('This reservation is no longer available.');
+                selectWeek(booking.week);
+                selectEquipment(booking.cartName);
+                setMobileDay(booking.dayIdx);
+                setBookingModal({ isOpen: true, dayIdx: booking.dayIdx, periodId: Number(booking.periodId), existingBooking: existing, isEditing: false, isBatch: false, isPast: isSlotBeforeToday(booking.week, booking.dayIdx) });
+            };
+            const renderMyBookingSlot = (dayIdx, period) => <div className="slot"><div className="slot-events">
+                {displayedBookings.filter(booking => booking.week === selectedWeek && booking.dayIdx === dayIdx && Number(booking.periodId) === period.id).map(booking =>
+                    <button type="button" className="booking-strip mine" key={`${booking.cartName}-${booking.bookingId}`} onClick={() => openMyBooking(booking)} title={`${booking.cartName} · ${booking.className}`}>
+                        <strong>{booking.cartName} · {booking.className}</strong><small>{booking.quantity} devices</small>
+                    </button>
+                )}
+            </div></div>;
+            const selectedCartCapacity = selectedCart ? getCartCapacity(cartData[selectedCart]) : 1;
+            const bookingModalSlotId = bookingModal.dayIdx !== null && bookingModal.periodId !== null
+                ? `w${selectedWeek}_d${bookingModal.dayIdx}_p${bookingModal.periodId}`
+                : null;
+            const bookingModalAvailableQuantity = bookingModal.isBatch
+                ? (batchSelection.length > 0 ? Math.min(...batchSelection.map(slot => getSlotRemainingQuantity(selectedCart, slot.slotId))) : selectedCartCapacity)
+                : bookingModalSlotId
+                    ? getSlotRemainingQuantity(selectedCart, bookingModalSlotId) + (bookingModal.existingBooking ? getBookingQuantity(bookingModal.existingBooking) : 0)
+                    : selectedCartCapacity;
+            const bookingFormData = bookingModal.isEditing ? editBookForm : bookForm;
+            const setBookingFormData = bookingModal.isEditing ? setEditBookForm : setBookForm;
+
+            if (firebaseReady === 'auth-error') {
+                return <div className="auth-shell"><div className="auth-content">
+                    <Icon name="triangle-exclamation" />
+                    <h2>Unable to connect</h2>
+                    <p>The sign-in service is unavailable. Please try again or contact the administrator.</p>
+                    <button className="ui-button" onClick={() => window.location.reload()}>Try again</button>
+                </div></div>;
+            }
+
+            if (!firebaseReady) {
+                return <div className="auth-shell"><div className="auth-content" role="status">
+                    <span className="brand-symbol"><Icon name="cart-shopping" /></span>
+                    <h2>IBSH Carts</h2><p><Icon name="spinner" className="fa-solid fa-spinner fa-spin" /> Connecting...</p>
+                </div></div>;
+            }
+
+            if (!currentUser && !isAdmin) {
+                return <div className="auth-shell"><div className="auth-content">
+                    <span className="brand-symbol"><Icon name="cart-shopping" /></span>
+                    <h1>IBSH Carts</h1><p>Equipment reservations</p>
+                    <p>Sign in with your authorized school Google account.</p>
+                    <button onClick={handleGoogleLogin} className="ui-button google-login">
+                        <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="" />
+                        Sign in with Google
+                    </button>
+                    {alertModal.isOpen && <div className="auth-error" role="alert">{alertModal.message}</div>}
+                </div></div>;
+            }
+
+            return (
+                <div className={`app-shell ${bookingModal.isOpen ? 'has-booking' : ''}`}>
+                    {sidebarOpen && <button className="sidebar-backdrop no-print" aria-label="Close equipment menu" onClick={() => setSidebarOpen(false)} />}
+                    <aside ref={sidebarRef} className={`sidebar no-print ${sidebarOpen ? 'open' : ''}`} aria-label="Equipment navigation"
+                        role={mobileViewport && sidebarOpen ? 'dialog' : undefined} aria-modal={mobileViewport && sidebarOpen ? true : undefined}
+                        inert={((mobileViewport && !sidebarOpen) || (bookingModal.isOpen && compactViewport)) ? '' : undefined}
+                        onKeyDown={event => {
+                            if (event.key === 'Escape') setSidebarOpen(false);
+                            if (event.key === 'Tab' && mobileViewport && sidebarOpen) {
+                                const items = [...sidebarRef.current.querySelectorAll('button, input, select')].filter(item => !item.disabled && item.getClientRects().length);
+                                if (event.shiftKey && document.activeElement === items[0]) { event.preventDefault(); items.at(-1)?.focus(); }
+                                else if (!event.shiftKey && document.activeElement === items.at(-1)) { event.preventDefault(); items[0]?.focus(); }
+                            }
+                        }}>
+                        <IconButton label="Close navigation" name="xmark" className="quiet sidebar-close" onClick={() => setSidebarOpen(false)} />
+                        <button className="brand" onClick={goHome} disabled={isSaving}>
+                            <span className="brand-symbol"><Icon name="cart-shopping" /></span>
+                            <span><strong>IBSH Carts</strong><small>Equipment reservations</small></span>
+                        </button>
+                        <nav className="sidebar-nav">
+                            <button className={`nav-item ${currentView === 'schedule' ? 'active' : ''}`} aria-current={currentView === 'schedule' ? 'page' : undefined} onClick={goHome} disabled={isSaving}><Icon name="calendar-days" /><span>Schedule</span></button>
+                            <button className={`nav-item ${currentView === 'my-bookings' ? 'active' : ''}`} aria-current={currentView === 'my-bookings' ? 'page' : undefined} onClick={() => changeView('my-bookings')} disabled={isSaving}><Icon name="calendar-check" /><span>My bookings</span></button>
+                        </nav>
+                        <div className="equipment-list">
+                            <label className="equipment-search"><Icon name="magnifying-glass" /><input aria-label="Search equipment" placeholder="Search equipment" value={searchQuery} onChange={event => setSearchQuery(event.target.value)} /></label>
+                            {locations.length > 2 && <select className="location-select" aria-label="Filter equipment by location" value={activeLocationFilter} onChange={event => setActiveLocationFilter(event.target.value)}>
+                                {locations.map(location => <option key={location} value={location}>{location === 'All' ? 'All locations' : location}</option>)}
+                            </select>}
+                            {[...new Set(sortedAllCarts.map(([, data]) => data.type || 'Equipment'))].map(type => {
+                                const carts = filteredCarts.filter(([, data]) => (data.type || 'Equipment') === type);
+                                return carts.length > 0 && <section className="equipment-group" key={type}><h2>{type}</h2>
+                                    {carts.map(([name]) => <button key={name} className={`nav-item ${currentView === 'schedule' && selectedCart === name ? 'active' : ''}`}
+                                        aria-pressed={selectedCart === name} disabled={isSaving} onClick={() => selectEquipment(name)}>
+                                        <Icon name={type === 'PC Lab' ? 'desktop' : 'cart-shopping'} /><span>{name}</span>
+                                    </button>)}
+                                </section>;
+                            })}
+                            {cartsLoaded && filteredCarts.length === 0 && <p className="px-3 py-5 text-xs text-gray-500">No equipment found.</p>}
+                        </div>
+                        <div className="sidebar-footer">
+                            {isAdmin && <button className={`nav-item ${currentView === 'admin' ? 'active' : ''}`} onClick={() => { changeView('admin'); setAdminTab('carts'); }} disabled={isSaving}><Icon name="gear" /><span>Settings</span></button>}
+                            <div className="account">
+                                <span className="avatar" aria-hidden="true">{currentUser?.name?.split(/\s+/).map(part => part[0]).slice(0, 2).join('').toUpperCase()}</span>
+                                <span className="account-name">{currentUser?.name}</span>
+                                <IconButton label="Sign out" name="right-from-bracket" className="quiet" onClick={handleLogout} disabled={isSaving} />
+                            </div>
+                        </div>
+                    </aside>
+
+                    <div className="workspace no-print" inert={(sidebarOpen || (bookingModal.isOpen && compactViewport)) ? '' : undefined}>
+                        <header className="workspace-header">
+                            <IconButton label="Open navigation" name="bars" className="quiet mobile-menu" onClick={() => setSidebarOpen(true)} />
+                            <div className="workspace-title">
+                                <h1>{currentView === 'schedule' ? (selectedCart || 'Schedule') : currentView === 'my-bookings' ? 'My bookings' : currentView === 'admin' ? 'Settings' : 'Print records'}</h1>
+                                {currentView === 'schedule' && selectedCart && <p>{cartData[selectedCart]?.type} · {getCartCapacity(selectedCart)} devices · {cartData[selectedCart]?.location}</p>}
+                            </div>
+                            <div className="header-actions">
+                                <IconButton label="Print records" name="print" onClick={() => { setPrintSelection(selectedCart ? [selectedCart] : []); changeView('print'); }} disabled={isSaving} />
+                                <button className="ui-button" onClick={() => changeView('my-bookings')} disabled={isSaving}><Icon name="calendar-check" />My bookings</button>
+                            </div>
+                        </header>
+                        <div className="week-toolbar">
+                            <div className="week-navigation">
+                                <IconButton label="Previous week" name="chevron-left" disabled={selectedWeek <= 1 || isSaving || !semesterConfigLoaded} onClick={() => selectWeek(selectedWeek - 1)} />
+                                <IconButton label="Next week" name="chevron-right" disabled={selectedWeek >= semesterConfig.totalWeeks || isSaving || !semesterConfigLoaded} onClick={() => selectWeek(selectedWeek + 1)} />
+                                <span className="week-range">{getWeekHeading()}</span>
+                                <select className="week-select" aria-label="Week" value={selectedWeek} disabled={isSaving || !semesterConfigLoaded} onChange={event => selectWeek(Number(event.target.value))}>
+                                    {weeksArray.map(week => <option key={week} value={week}>Week {week}</option>)}
+                                </select>
+                                <button className="ui-button this-week" disabled={isSaving || !semesterConfigLoaded} onClick={() => selectWeek(currentRealWeek)}>This week</button>
+                                {currentView === 'schedule' && <label className="toggle-label"><input type="checkbox" checked={isBatchMode} disabled={isSaving} onChange={event => { closeBooking(); setIsBatchMode(event.target.checked); setBatchSelection([]); }} />Batch booking</label>}
+                            </div>
+                            {currentView === 'schedule' && <div className="legend" aria-label="Booking status legend">
+                                <span><i />Available</span><span><i aria-hidden="true" className="mine" />My booking</span><span><i aria-hidden="true" className="booked" />Booked</span><span><i aria-hidden="true" className="locked" />Locked</span>
+                            </div>}
+                        </div>
+                        {dataError && <div className="status-banner error" role="alert"><Icon name="circle-exclamation" /><span>{dataError}</span><button className="ui-button" onClick={() => window.location.reload()}>Retry</button></div>}
+                        {!isAdmin && selectedWeek > currentRealWeek + (semesterConfig.maxAdvanceWeeks || 2) && <div className="status-banner"><Icon name="lock" /><span>Booking opens up to {semesterConfig.maxAdvanceWeeks || 2} weeks in advance.</span></div>}
+                        <main className={currentView === 'schedule' ? 'schedule-view' : 'legacy-view'}>
+                        
+                        {currentView === 'my-bookings' && (
+                            <section className="my-bookings-view">
+                                <div className="bookings-toolbar">
+                                    <div className="view-tabs" role="tablist" aria-label="Reservation dates">
+                                        <button role="tab" aria-selected={myBookingsTab === 'upcoming'} className={myBookingsTab === 'upcoming' ? 'active' : ''} onClick={() => setMyBookingsTab('upcoming')}>Upcoming <span>{upcomingBookings.length}</span></button>
+                                        <button role="tab" aria-selected={myBookingsTab === 'history'} className={myBookingsTab === 'history' ? 'active' : ''} onClick={() => setMyBookingsTab('history')}>History <span>{historyBookings.length}</span></button>
+                                    </div>
+                                    <div className="segmented-control" aria-label="Reservation view">
+                                        <IconButton label="List view" name="list" aria-pressed={myBookingsView === 'list'} className={myBookingsView === 'list' ? 'active' : ''} onClick={() => setMyBookingsView('list')} />
+                                        <IconButton label="Calendar view" name="calendar-days" aria-pressed={myBookingsView === 'calendar'} className={myBookingsView === 'calendar' ? 'active' : ''} onClick={() => setMyBookingsView('calendar')} />
+                                    </div>
+                                </div>
+                                {displayedBookings.length === 0 ? (
+                                    <div className="empty-state"><Icon name="calendar-check" /><h2>{myBookingsTab === 'upcoming' ? 'No upcoming reservations' : 'No past reservations'}</h2><button className="ui-button" onClick={goHome}>View schedule</button></div>
+                                ) : myBookingsView === 'list' ? (
+                                    <div className="booking-list">
+                                        {displayedBookings.map(booking => <article className="booking-list-row" key={`${booking.cartName}-${booking.slotId}-${booking.bookingId}`}>
+                                            <div className="booking-list-date"><strong>{getSlotDate(booking.week, booking.dayIdx)?.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</strong><span>{currentDays[booking.dayIdx]} · P{booking.periodId}</span></div>
+                                            <div className="booking-list-equipment"><strong>{booking.cartName}</strong><span>{booking.className}</span></div>
+                                            <span className="booking-list-quantity">{booking.quantity} devices</span>
+                                            <div className="booking-list-actions">
+                                                <IconButton label={`View reservation for ${booking.cartName}`} name="arrow-up-right-from-square" onClick={() => openMyBooking(booking)} />
+                                                {(isAdmin || !isSlotBeforeToday(booking.week, booking.dayIdx)) && <IconButton label={`Cancel reservation for ${booking.cartName}`} name="trash-can" onClick={() => cancelBookingFromList(booking.cartName, booking.slotId, booking.className, booking.bookingId)} />}
+                                            </div>
+                                        </article>)}
+                                    </div>
+                                ) : (
+                                    <>
+                                        <div className="calendar-scroll desktop-calendar"><table className="week-grid" aria-label="My weekly reservations">
+                                            <colgroup><col className="period-column" />{currentDays.map(day => <col key={day} />)}</colgroup>
+                                            <thead><tr><th scope="col">Period</th>{currentDays.map((day, index) => <th key={day} scope="col">{day.slice(0, 3)} {getDateForDayIdx(selectedWeek, index)}</th>)}</tr></thead>
+                                            <tbody>{periods.map(period => period.id === 'lunch' ? <tr key="lunch" className="lunch-row"><td colSpan={currentDays.length + 1}>Lunch · {period.time}</td></tr> : <tr key={period.id}>
+                                                <th className="period-heading" scope="row">P{period.id}<small>{period.time}</small></th>{currentDays.map((day, index) => <td key={day}>{renderMyBookingSlot(index, period)}</td>)}
+                                            </tr>)}</tbody>
+                                        </table></div>
+                                        <div className="mobile-calendar">
+                                            <div className="mobile-days" role="tablist" aria-label="My reservation day">{currentDays.map((day, index) => <button key={day} role="tab" aria-selected={mobileDay === index} className={mobileDay === index ? 'active' : ''} onClick={() => setMobileDay(index)}>{day.slice(0, 3)}<strong>{getSlotDate(selectedWeek, index)?.getDate()}</strong></button>)}</div>
+                                            {periods.map(period => period.id === 'lunch' ? <div key="lunch" className="mobile-lunch">Lunch · {period.time}</div> : <div key={period.id} className="mobile-period"><header>P{period.id}<small>{period.time}</small></header>{renderMyBookingSlot(mobileDay, period)}</div>)}
+                                        </div>
+                                    </>
+                                )}
+                            </section>
+                        )}
+
+                        {currentView === 'schedule' && (
+                            !cartsLoaded || !semesterConfigLoaded ? (
+                                !dataError && <div className="empty-state" role="status"><i aria-hidden="true" className="fa-solid fa-spinner fa-spin" aria-hidden="true" /><p>Loading schedule...</p></div>
+                            ) : !selectedCart ? (
+                                <div className="empty-state"><Icon name="calendar-days" /><h2>No equipment available</h2>{isAdmin && <button className="ui-button" onClick={() => changeView('admin')}>Manage equipment</button>}</div>
+                            ) : (
+                                <>
+                                    {cartData[selectedCart]?.notes && <div className="schedule-options"><div className="equipment-note"><Icon name="circle-info" /><span>{cartData[selectedCart].notes}</span></div></div>}
+                                    <div className="calendar-scroll desktop-calendar">
+                                        <table className="week-grid" aria-label={`${selectedCart} weekly schedule`}>
+                                            <colgroup><col className="period-column" />{currentDays.map(day => <col key={day} />)}</colgroup>
+                                            <thead><tr><th scope="col"><span className="sr-only">Period</span></th>
+                                                {currentDays.map((day, dayIdx) => {
+                                                    const date = getSlotDate(selectedWeek, dayIdx);
+                                                    const today = date?.getTime() === getTodayDate().getTime();
+                                                    return <th key={day} scope="col"><div className={`day-heading ${today ? 'today' : ''}`}>
+                                                        <span>{day.slice(0, 3)}</span><span className="date-number" aria-current={today ? 'date' : undefined}>{date?.getDate()}</span>
+                                                    </div></th>;
+                                                })}
+                                            </tr></thead>
+                                            <tbody>{periods.map(period => period.id === 'lunch' ? (
+                                                <tr key="lunch" className="lunch-row"><td colSpan={currentDays.length + 1}>Lunch · {period.time}</td></tr>
+                                            ) : (
+                                                <tr key={period.id}>
+                                                    <th scope="row" className="period-heading">P{period.id}<small>{period.time}</small></th>
+                                                    {currentDays.map((day, dayIdx) => <td key={day}>{renderScheduleSlot(dayIdx, period)}</td>)}
+                                                </tr>
+                                            ))}</tbody>
+                                        </table>
+                                    </div>
+                                    <div className="mobile-calendar">
+                                        <div className="mobile-days" role="tablist" aria-label="Day">
+                                            {currentDays.map((day, dayIdx) => {
+                                                const date = getSlotDate(selectedWeek, dayIdx);
+                                                return <button key={day} type="button" role="tab" id={`day-tab-${dayIdx}`} aria-controls="daily-schedule" aria-selected={mobileDay === dayIdx}
+                                                    className={`${mobileDay === dayIdx ? 'active' : ''} ${date?.getTime() === getTodayDate().getTime() ? 'today' : ''}`}
+                                                    onClick={() => setMobileDay(dayIdx)}>{day.slice(0, 3)}<strong>{date?.getDate()}</strong></button>;
+                                            })}
+                                        </div>
+                                        <section id="daily-schedule" role="tabpanel" aria-labelledby={`day-tab-${mobileDay}`}>
+                                            {periods.map(period => period.id === 'lunch' ? <div key="lunch" className="mobile-lunch">Lunch · {period.time}</div> : (
+                                                <div key={period.id} className="mobile-period">
+                                                    <header>P{period.id}<small>{period.time}</small></header>
+                                                    {renderScheduleSlot(mobileDay, period)}
+                                                </div>
+                                            ))}
+                                        </section>
+                                    </div>
+                                    {isBatchMode && <div className="batch-footer">
+                                        <span>{batchSelection.length} slots selected</span>
+                                        {batchSelection.length > 0 && <button className="ui-button" disabled={isSaving} onClick={() => setBatchSelection([])}>Clear</button>}
+                                        <button className="ui-button primary" disabled={batchSelection.length === 0 || isSaving} onClick={() => {
+                                            const quantity = Math.min(...batchSelection.map(slot => getSlotRemainingQuantity(selectedCart, slot.slotId)));
+                                            setBookForm(createDefaultBookForm(quantity));
+                                            setBookingModal({ isOpen: true, isBatch: true, existingBooking: null, isEditing: false });
+                                        }}><Icon name="check" />Book selected</button>
+                                    </div>}
+                                </>
+                            )
+                        )}
+
+                        {currentView === 'admin' && isAdmin && (
+                            <div className="animate-[fadeIn_0.3s_ease-out]">
+                                <div className="mb-6 flex items-center justify-between">
+                                    <button onClick={goBack} className="text-gray-400 font-extrabold uppercase tracking-wider hover:text-duo-text transition-colors flex items-center border-2 border-duo-grayBorder px-4 py-2 rounded-xl bg-white hover:bg-gray-50">
+                                        <i aria-hidden="true" className="fa-solid fa-arrow-left mr-2"></i> Back
+                                    </button>
+                                </div>
+                                <div className="bg-white rounded-[2rem] border-2 border-duo-grayBorder shadow-duo-card overflow-hidden">
+                                    <div className="flex border-b-2 border-duo-grayBorder bg-duo-grayLight overflow-x-auto hide-scrollbar">
+                                        <button onClick={() => setAdminTab('carts')} className={`px-6 py-5 text-sm font-extrabold uppercase tracking-wider flex items-center whitespace-nowrap transition-colors ${adminTab === 'carts' ? 'bg-white text-duo-blue border-b-4 border-duo-blue' : 'text-gray-400 border-b-4 border-transparent hover:text-duo-text'}`}><i aria-hidden="true" className="fa-solid fa-cube mr-2 text-lg"></i> Equipment</button>
+                                        <button onClick={() => setAdminTab('users')} className={`px-6 py-5 text-sm font-extrabold uppercase tracking-wider flex items-center whitespace-nowrap transition-colors ${adminTab === 'users' ? 'bg-white text-duo-blue border-b-4 border-duo-blue' : 'text-gray-400 border-b-4 border-transparent hover:text-duo-text'}`}><i aria-hidden="true" className="fa-solid fa-users mr-2 text-lg"></i> Users</button>
+                                        <button onClick={() => setAdminTab('logs')} className={`px-6 py-5 text-sm font-extrabold uppercase tracking-wider flex items-center whitespace-nowrap transition-colors ${adminTab === 'logs' ? 'bg-white text-duo-blue border-b-4 border-duo-blue' : 'text-gray-400 border-b-4 border-transparent hover:text-duo-text'}`}><i aria-hidden="true" className="fa-solid fa-list-ul mr-2 text-lg"></i> Logs</button>
+                                        <button onClick={() => setAdminTab('settings')} className={`px-6 py-5 text-sm font-extrabold uppercase tracking-wider flex items-center whitespace-nowrap transition-colors ${adminTab === 'settings' ? 'bg-white text-duo-blue border-b-4 border-duo-blue' : 'text-gray-400 border-b-4 border-transparent hover:text-duo-text'}`}><i aria-hidden="true" className="fa-solid fa-gear mr-2 text-lg"></i> Settings</button>
+                                    </div>
+
+                                    <div className="p-8">
+                                        {adminTab === 'carts' && (
+                                            <div>
+                                                <div className="flex flex-wrap justify-between items-center mb-6 gap-4 border-b-2 border-duo-grayBorder pb-4">
+                                                    <h3 className="text-2xl font-extrabold text-duo-text">Equipment List</h3>
+                                                    <button onClick={() => setEditCartModal({ isOpen: true, cartName: null, data: { type: 'Chromebook', capacity: 30, location: '', notes: '' } })} className="px-5 py-3 bg-duo-green text-white font-extrabold uppercase tracking-wider text-sm rounded-2xl shadow-duo-green active:shadow-none active:translate-y-[4px] transition-all"><i aria-hidden="true" className="fa-solid fa-plus mr-2"></i> Add New</button>
+                                                </div>
+                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                    {sortedAllCarts.map(([name, data], index) => (
+                                                        <div key={name} className="admin-equipment-row border-2 border-duo-grayBorder rounded-2xl p-3 sm:p-4 bg-white hover:border-duo-blue transition-colors">
+                                                            <div className="admin-equipment-info flex items-center gap-3 sm:gap-4">
+                                                                <div className="flex flex-col gap-1 pr-3 border-r-2 border-duo-grayBorder shrink-0">
+                                                                    <button aria-label={`Move ${name} up`} title="Move up" onClick={() => moveCart(name, 'up')} disabled={index === 0} className="text-gray-300 hover:text-duo-blue disabled:opacity-20 disabled:hover:text-gray-300 transition-colors cursor-pointer"><i aria-hidden="true" className="fa-solid fa-caret-up text-2xl leading-none"></i></button>
+                                                                    <button aria-label={`Move ${name} down`} title="Move down" onClick={() => moveCart(name, 'down')} disabled={index === sortedAllCarts.length - 1} className="text-gray-300 hover:text-duo-blue disabled:opacity-20 disabled:hover:text-gray-300 transition-colors cursor-pointer"><i aria-hidden="true" className="fa-solid fa-caret-down text-2xl leading-none"></i></button>
+                                                                </div>
+                                                                {getIcon(data.type)}
+                                                                <div className="truncate">
+                                                                    <div className="font-extrabold text-lg text-duo-text leading-none truncate">{name}</div>
+                                                                    <div className="text-sm font-bold text-gray-400 mt-1 truncate">{data.capacity} devices • {data.location}</div>
+                                                                </div>
+                                                            </div>
+                                                            <div className="admin-equipment-actions flex gap-2 shrink-0">
+                                                                <button onClick={() => setEditCartModal({ isOpen: true, cartName: name, data: data })} className="w-10 h-10 bg-white border-2 border-duo-grayBorder text-duo-blue rounded-xl shadow-duo-gray active:shadow-none active:translate-y-[4px] flex items-center justify-center transition-all" title="Edit"><i aria-hidden="true" className="fa-solid fa-pen"></i></button>
+                                                                <button onClick={() => deleteCart(name)} className="w-10 h-10 bg-white border-2 border-duo-grayBorder text-duo-red rounded-xl shadow-duo-gray active:shadow-none active:translate-y-[4px] flex items-center justify-center transition-all" title="Delete"><i aria-hidden="true" className="fa-solid fa-trash"></i></button>
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {adminTab === 'users' && (
+                                            <div>
+                                                <div className="flex flex-wrap justify-between items-center mb-6 border-b-2 border-duo-grayBorder pb-4 gap-4">
+                                                    <h3 className="text-2xl font-extrabold text-duo-text">Whitelist Teachers</h3>
+                                                    <button onClick={() => setAdminAddUserModal({ isOpen: true })} className="px-5 py-3 bg-duo-blue text-white font-extrabold uppercase tracking-wider text-sm rounded-2xl shadow-duo-blue active:shadow-none active:translate-y-[4px] transition-all">
+                                                        <i aria-hidden="true" className="fa-solid fa-user-plus mr-2"></i> Add Teacher
+                                                    </button>
+                                                </div>
+                                                <div className="overflow-x-auto border-2 border-duo-grayBorder rounded-2xl">
+                                                    <table className="w-full text-left">
+                                                        <thead className="bg-duo-grayLight border-b-2 border-duo-grayBorder">
+                                                            <tr><th className="p-4 text-xs font-extrabold text-gray-400 uppercase tracking-wider">Name</th><th className="p-4 text-xs font-extrabold text-gray-400 uppercase tracking-wider">Google Email</th><th className="p-4 text-xs font-extrabold text-gray-400 uppercase tracking-wider">Default Subject</th><th className="p-4 text-right text-xs font-extrabold text-gray-400 uppercase tracking-wider">Actions</th></tr>
+                                                        </thead>
+                                                        <tbody className="divide-y-2 divide-duo-grayBorder">
+                                                            {Object.values(usersDB).map((user) => (
+                                                                <tr key={user.email} className="hover:bg-gray-50 transition-colors">
+                                                                    <td className="p-4 font-extrabold text-duo-text">{user.name}</td>
+                                                                    <td className="p-4 font-bold text-gray-500">{user.email}</td>
+                                                                    <td className="p-4 font-bold text-gray-500">{user.defaultClass === 'Other (Specify)' ? user.customClass : user.defaultClass}</td>
+                                                                    <td className="p-4 flex justify-end gap-2">
+                                                                        <button onClick={() => deleteUser(user.email)} className="px-3 py-2 bg-white border-2 border-duo-grayBorder text-duo-red rounded-xl shadow-duo-gray active:shadow-none active:translate-y-[4px] text-xs font-extrabold uppercase transition-all"><i aria-hidden="true" className="fa-solid fa-trash mr-1"></i> Remove</button>
+                                                                    </td>
+                                                                </tr>
+                                                            ))}
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {adminTab === 'logs' && (
+                                            <div>
+                                                <h3 className="text-2xl font-extrabold text-duo-text mb-6 border-b-2 border-duo-grayBorder pb-4">Activity Logs (Recent 100)</h3>
+                                                <div className="overflow-x-auto max-h-[600px] overflow-y-auto border-2 border-duo-grayBorder rounded-2xl custom-scrollbar">
+                                                    <table className="w-full text-left min-w-[700px]">
+                                                        <thead className="bg-duo-grayLight border-b-2 border-duo-grayBorder sticky top-0 z-10">
+                                                            <tr><th className="p-4 text-xs font-extrabold text-gray-400 uppercase tracking-wider">Time</th><th className="p-4 text-xs font-extrabold text-gray-400 uppercase tracking-wider">User</th><th className="p-4 text-xs font-extrabold text-gray-400 uppercase tracking-wider">Action</th><th className="p-4 text-xs font-extrabold text-gray-400 uppercase tracking-wider">Details</th></tr>
+                                                        </thead>
+                                                        <tbody className="divide-y-2 divide-duo-grayBorder">
+                                                            {activityLogs.map((log) => (
+                                                                <tr key={log.id} className="hover:bg-gray-50">
+                                                                    <td className="p-4 font-bold text-gray-400 text-sm whitespace-nowrap">{log.time}</td>
+                                                                    <td className="p-4 font-extrabold text-duo-text">{log.operator}</td>
+                                                                    <td className="p-4">
+                                                                        <span className={`px-3 py-1 rounded-xl text-xs font-extrabold uppercase tracking-wider border-2 ${log.action.includes('Cancel') || log.action.includes('Delete') || log.action.includes('Clear') ? 'bg-red-50 text-duo-red border-red-200' : log.action.includes('Add User') ? 'bg-blue-50 text-duo-blue border-blue-200' : 'bg-green-50 text-duo-green border-green-200'}`}>
+                                                                            {log.action}
+                                                                        </span>
+                                                                    </td>
+                                                                    <td className="p-4 font-bold text-gray-500 text-sm"><span className="text-duo-text font-extrabold mr-2">{log.cart}</span>{log.details}</td>
+                                                                </tr>
+                                                            ))}
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {adminTab === 'settings' && (
+                                            <div className="flex flex-col lg:flex-row gap-8">
+                                                <div className="flex-1">
+                                                    <h3 className="text-2xl font-extrabold text-duo-text mb-6 border-b-2 border-duo-grayBorder pb-4">Semester Config</h3>
+                                                    <div className="bg-duo-grayLight border-2 border-duo-grayBorder rounded-[2rem] p-6 mb-8">
+                                                        <form onSubmit={handleSemesterConfigSave} className="space-y-4">
+                                                            <label className="toggle-label"><input type="checkbox" checked={allowSaturday} onChange={handleSaturdayToggle} />Allow Saturday booking</label>
+                                                            <div><label className="block text-xs font-extrabold text-gray-500 uppercase tracking-wider mb-2">Start Date (Week 1)</label><input required type="date" value={tempSemesterConfig.startDate} onChange={e => setTempSemesterConfig({...tempSemesterConfig, startDate: e.target.value})} className="w-full px-4 py-3 bg-white border-2 border-duo-grayBorder rounded-xl focus:border-duo-blue outline-none font-bold text-duo-text" /></div>
+                                                            <div className="grid grid-cols-2 gap-4">
+                                                                <div><label className="block text-xs font-extrabold text-gray-500 uppercase tracking-wider mb-2">Total Weeks</label><input required type="number" min="1" max="52" value={tempSemesterConfig.totalWeeks} onChange={e => setTempSemesterConfig({...tempSemesterConfig, totalWeeks: Number(e.target.value)})} className="w-full px-4 py-3 bg-white border-2 border-duo-grayBorder rounded-xl focus:border-duo-blue outline-none font-bold text-duo-text" /></div>
+                                                                <div><label className="block text-xs font-extrabold text-gray-500 uppercase tracking-wider mb-2">Max Advance (Weeks)</label><input required type="number" min="1" max="52" value={tempSemesterConfig.maxAdvanceWeeks || 2} onChange={e => setTempSemesterConfig({...tempSemesterConfig, maxAdvanceWeeks: Number(e.target.value)})} title="老師最多可以提前幾週預約" className="w-full px-4 py-3 bg-white border-2 border-duo-grayBorder rounded-xl focus:border-duo-blue outline-none font-bold text-duo-text" /></div>
+                                                            </div>
+                                                            <button type="submit" className="w-full mt-2 bg-duo-green text-white font-extrabold uppercase py-3 rounded-2xl shadow-duo-green active:shadow-none active:translate-y-[4px] transition-all tracking-wider">Save Config</button>
+                                                        </form>
+                                                    </div>
+
+                                                    <h3 className="text-2xl font-extrabold text-duo-text mb-6 border-b-2 border-duo-grayBorder pb-4"><i aria-hidden="true" className="fa-solid fa-lock text-duo-red mr-2"></i> Recurring Locks</h3>
+                                                    <div className="bg-duo-grayLight border-2 border-duo-grayBorder rounded-[2rem] p-6 mb-8">
+                                                        <p className="text-sm font-bold text-gray-500 mb-4">設定每週固定鎖定的時段（例如：每週三 P3 會議室固定使用）。被鎖定的格子老師與管理員皆無法預約。</p>
+                                                        <button onClick={() => setLockModal({ isOpen: true, lockId: null, data: null })} className="w-full mb-4 bg-duo-blue text-white font-extrabold uppercase py-3 rounded-2xl shadow-duo-blue active:shadow-none active:translate-y-[4px] transition-all tracking-wider">
+                                                            <i aria-hidden="true" className="fa-solid fa-plus mr-2"></i> 新增鎖定
+                                                        </button>
+                                                        {recurringLocks.length === 0 ? (
+                                                            <div className="bg-white rounded-2xl border-2 border-dashed border-duo-grayBorder p-6 text-center text-sm font-bold text-gray-400">
+                                                                尚未設定任何鎖定
+                                                            </div>
+                                                        ) : (
+                                                            <div className="space-y-3">
+                                                                {recurringLocks.map(lock => {
+                                                                    const dayName = currentDays[lock.dayIdx] || `Day ${lock.dayIdx}`;
+                                                                    const periodInfo = periods.find(p => String(p.id) === String(lock.periodId));
+                                                                    const endWeek = Number(lock.startWeek) + Number(lock.weeks) - 1;
+                                                                    return (
+                                                                        <div key={lock.id} className="bg-white border-2 border-duo-grayBorder rounded-2xl p-4 flex flex-wrap items-center justify-between gap-3">
+                                                                            <div className="flex-1 min-w-0">
+                                                                                <div className="flex items-center gap-2 mb-1">
+                                                                                    <i aria-hidden="true" className="fa-solid fa-lock text-duo-red"></i>
+                                                                                    <span className="font-extrabold text-duo-text truncate">{lock.name}</span>
+                                                                                </div>
+                                                                                <div className="text-xs font-bold text-gray-500">
+                                                                                    <span className="bg-blue-50 text-duo-blue px-2 py-0.5 rounded-md mr-2">{lock.cartName}</span>
+                                                                                    {dayName} · {periodInfo ? periodInfo.name : `P${lock.periodId}`} · 第 {lock.startWeek}-{endWeek} 週（{lock.weeks} 週）
+                                                                                </div>
+                                                                            </div>
+                                                                            <div className="flex gap-2">
+                                                                                <button onClick={() => setLockModal({ isOpen: true, lockId: lock.id, data: lock })} className="px-3 py-2 bg-white border-2 border-duo-grayBorder text-duo-blue font-extrabold rounded-xl shadow-duo-gray active:shadow-none active:translate-y-[2px] text-xs">
+                                                                                    <i aria-hidden="true" className="fa-solid fa-pen"></i>
+                                                                                </button>
+                                                                                <button onClick={() => deleteLock(lock.id)} className="px-3 py-2 bg-white border-2 border-duo-grayBorder text-duo-red font-extrabold rounded-xl shadow-duo-gray active:shadow-none active:translate-y-[2px] text-xs">
+                                                                                    <i aria-hidden="true" className="fa-solid fa-trash"></i>
+                                                                                </button>
+                                                                            </div>
+                                                                        </div>
+                                                                    );
+                                                                })}
+                                                            </div>
+                                                        )}
+                                                    </div>
+
+                                                    <h3 className="text-2xl font-extrabold text-duo-red mb-6 border-b-2 border-duo-grayBorder pb-4"><i aria-hidden="true" className="fa-solid fa-skull mr-2"></i> Danger Zone</h3>
+                                                    <div className="bg-red-50 border-2 border-red-200 rounded-[2rem] p-6">
+                                                        <p className="text-sm font-bold text-duo-red mb-4">Click below to wipe all booking records in the system. Use at the start of a new semester. Cannot be undone!</p>
+                                                        <button onClick={handleClearSemesterData} className="w-full bg-duo-red text-white font-extrabold uppercase py-3 rounded-2xl shadow-duo-red active:shadow-none active:translate-y-[4px] transition-all tracking-wider">
+                                                            <i aria-hidden="true" className="fa-solid fa-bomb mr-2"></i> Clear Bookings
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                        
+                        {currentView === 'print' && (
+                            <div className="animate-[fadeIn_0.3s_ease-out]">
+                                <div className="mb-6 flex items-center justify-between">
+                                    <button onClick={goBack} className="text-gray-400 font-extrabold uppercase tracking-wider hover:text-duo-text transition-colors flex items-center border-2 border-duo-grayBorder px-4 py-2 rounded-xl bg-white hover:bg-gray-50">
+                                        <i aria-hidden="true" className="fa-solid fa-arrow-left mr-2"></i> Back
+                                    </button>
+                                </div>
+                                <div className="bg-white rounded-[2rem] border-2 border-duo-grayBorder shadow-duo-card p-8">
+                                    <h2 className="text-3xl font-extrabold text-duo-text mb-2"><i aria-hidden="true" className="fa-solid fa-print text-duo-blue mr-3"></i>Print Records</h2>
+                                    <p className="font-bold text-gray-500 mb-8 border-b-2 border-duo-grayBorder pb-4">Week selected: <span className="text-duo-blue font-extrabold px-2 py-1 bg-blue-50 rounded-lg">Week {selectedWeek}</span></p>
+                                    
+                                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 mb-8">
+                                        {sortedAllCarts.map(([name, data]) => {
+                                            const isSelected = printSelection.includes(name);
+                                            return (
+                                                <button type="button" aria-pressed={isSelected} key={name} onClick={() => setPrintSelection(prev => isSelected ? prev.filter(n => n !== name) : [...prev, name])} 
+                                                    className={`p-4 rounded-2xl border-4 cursor-pointer text-center font-extrabold transition-all ${isSelected ? 'border-duo-blue bg-blue-50 text-duo-blue' : 'border-duo-grayBorder text-gray-400 hover:bg-gray-50'}`}>
+                                                    {name}
+                                                    {isSelected && <i aria-hidden="true" className="fa-solid fa-circle-check block mt-2 text-xl"></i>}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                    <div className="flex justify-end gap-4">
+                                        <button onClick={() => window.print()} disabled={printSelection.length===0} className="px-8 py-4 bg-duo-blue text-white font-extrabold uppercase tracking-wider rounded-2xl shadow-[0_4px_0_0_#1899d6] active:shadow-none active:translate-y-[4px] disabled:opacity-50 disabled:cursor-not-allowed transition-all text-lg">
+                                            Start Printing ({printSelection.length})
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                    </main>
+                    </div>
+
+<div className="hidden print-only w-full">
+    {printSelection.map((cartName) => (
+        <div key={cartName} className="page-break w-full">
+            <div className="text-center mb-2">
+                <h2 className="text-2xl font-bold">{cartName} Reservation List</h2>
+                <p className="text-sm mt-1">Week {selectedWeek} ( {getWeekDateRange(selectedWeek, allowSaturday)} )</p>
+            </div>
+            
+            <table className="w-full text-xs">
+                <thead>
+                    <tr>
+                        <th className="col-period" rowSpan="2">Period</th>
+                        {currentDays.map((d, dayIdx) => (
+                            <th key={d} colSpan="3" className="py-1">
+                                <span className="text-[14px]">{d}</span> <span style={{fontSize:'11px', fontWeight:'normal', color:'#666'}}>{getDateForDayIdx(selectedWeek, dayIdx)}</span>
+                            </th>
+                        ))}
+                    </tr>
+                    <tr>
+                        {currentDays.map(d => (
+                            <React.Fragment key={d + "-sub"}>
+                                <th className="text-[11px] py-1 bg-[#fafafa]">Teacher</th>
+                                <th className="text-[11px] py-1 bg-[#fafafa]" style={{ width: '40px' }}>Check-out</th>
+                                <th className="text-[11px] py-1 bg-[#fafafa]" style={{ width: '40px' }}>Return</th>
+                            </React.Fragment>
+                        ))}
+                    </tr>
+                </thead>
+                <tbody>
+    {periods.map(period => (
+        <React.Fragment key={period.id}>
+            <tr>
+                <td>
+                    <strong className="text-[13px]">{period.name}</strong><br/>
+                    <span className="text-[10px] text-gray-600">{period.time}</span>
+                </td>
+                {currentDays.map((day, dayIdx) => {
+                    if (period.id === 'lunch') {
+                        return <td key={dayIdx} colSpan="3" className="print-lunch font-bold text-center">Not Avaliable for Lunch</td>;
+                    }
+                    
+                    const booking = cartData[cartName]?.schedule?.[`w${selectedWeek}_d${dayIdx}_p${period.id}`];
+                    const printBookings = normalizeSlotBookings(booking);
+                    const printLock = getLockForSlot(cartName, selectedWeek, dayIdx, period.id);
+
+                    return (
+                        <React.Fragment key={dayIdx}>
+                            <td className="text-left align-top p-1.5 leading-tight">
+                                {printLock ? (
+                                    <div>
+                                        <strong className="text-[12px]">🔒 {printLock.name}</strong>
+                                    </div>
+                                ) : printBookings.length > 0 ? (
+                                    <div>
+                                        {printBookings.map((printBooking, bookingIdx) => (
+                                            <div key={printBooking.id || bookingIdx} className="mb-1">
+                                                <span className="text-[10px] text-gray-600">{printBooking.className} · x{getBookingQuantity(printBooking)}</span><br/>
+                                                <strong className="text-[12px]">{printBooking.name}</strong>
+                                            </div>
+                                        ))}
+                                    </div>
+                                ) : ""}
+                            </td>
+                            <td></td>
+                            <td></td>
+                        </React.Fragment>
+                    );
+                })}
+            </tr>
+
+            {period.id === 'lunch' && (
+                <tr>
+                    <th className="text-[11px] py-1 bg-[#fafafa]">Period</th>
+                    {currentDays.map(d => (
+                        <React.Fragment key={d + "-sub-afternoon"}>
+                            <th className="text-[11px] py-1 bg-[#fafafa]">Teacher</th>
+                            <th className="text-[11px] py-1 bg-[#fafafa]" style={{ width: '40px' }}>Check-out</th>
+                            <th className="text-[11px] py-1 bg-[#fafafa]" style={{ width: '40px' }}>Return</th>
+                        </React.Fragment>
+                    ))}
+                </tr>
+            )}
+        </React.Fragment>
+    ))}
+</tbody>
+
+            </table>
+            
+            <div className="mt-auto pt-3 pb-2 flex justify-between px-8 text-sm font-bold">
+            </div>
+        </div>
+    ))}
+</div>
+                    
+                    {adminAddUserModal.isOpen && (
+                        <div className="legacy-view legacy-modal fixed inset-0 bg-slate-900/60 flex items-center justify-center p-4 z-[70] backdrop-blur-sm no-print">
+                            <FocusPanel titleId="add-user-heading" onClose={() => setAdminAddUserModal({ isOpen: false })} className="bg-white rounded-[2rem] border-2 border-duo-grayBorder shadow-2xl w-full max-w-md overflow-hidden animate-[fadeIn_0.15s_ease-out]">
+                                <div className="p-6 border-b-2 border-duo-grayBorder flex justify-between items-center bg-duo-grayLight">
+                                    <h3 id="add-user-heading" className="font-extrabold text-xl text-duo-text"><i aria-hidden="true" className="fa-solid fa-user-plus text-duo-blue mr-2"></i>Add to Whitelist</h3>
+                                    <button type="button" aria-label="Close teacher form" title="Close teacher form" onClick={() => setAdminAddUserModal({ isOpen: false })} className="w-8 h-8 flex items-center justify-center bg-white border-2 border-duo-grayBorder rounded-full text-gray-400 hover:text-duo-text transition-colors">
+                                        <i aria-hidden="true" className="fa-solid fa-times"></i>
+                                    </button>
+                                </div>
+                                <form onSubmit={handleAdminAddUser} className="p-6 space-y-4">
+                                    <div><label className="block text-xs font-extrabold text-gray-400 uppercase tracking-wider mb-1">Full Name</label><input required type="text" value={addUserForm.name} onChange={e => setAddUserForm({...addUserForm, name: e.target.value})} className="w-full px-4 py-3 bg-white border-2 border-duo-grayBorder rounded-xl focus:border-duo-blue outline-none font-bold" /></div>
+                                    <div><label className="block text-xs font-extrabold text-gray-400 uppercase tracking-wider mb-1">Google Email</label><input required type="email" value={addUserForm.email} onChange={e => setAddUserForm({...addUserForm, email: e.target.value})} placeholder="Must be a valid Google Account" className="w-full px-4 py-3 bg-white border-2 border-duo-grayBorder rounded-xl focus:border-duo-blue outline-none font-bold" /></div>
+                                    <div><label className="block text-xs font-extrabold text-gray-400 uppercase tracking-wider mb-1">Default Subject</label><select value={addUserForm.classType} onChange={e => setAddUserForm({...addUserForm, classType: e.target.value})} className="w-full px-4 py-3 bg-white border-2 border-duo-grayBorder rounded-xl focus:border-duo-blue outline-none font-bold">{classOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}</select></div>
+                                    {addUserForm.classType === 'Other (Specify)' && <input required type="text" value={addUserForm.customClass} onChange={e => setAddUserForm({...addUserForm, customClass: e.target.value})} placeholder="Specify" className="w-full px-4 py-3 bg-white border-2 border-duo-grayBorder rounded-xl focus:border-duo-blue outline-none font-bold" />}
+                                    <div className="flex gap-3 pt-4 border-t-2 border-duo-grayBorder mt-4">
+                                        <button type="button" onClick={() => setAdminAddUserModal({ isOpen: false })} className="flex-1 bg-white border-2 border-duo-grayBorder text-gray-400 font-extrabold uppercase py-3 rounded-2xl shadow-duo-gray active:shadow-none active:translate-y-[4px] transition-all">Cancel</button>
+                                        <button type="submit" className="flex-[2] bg-duo-blue text-white font-extrabold uppercase py-3 rounded-2xl shadow-duo-blue active:shadow-none active:translate-y-[4px] transition-all">Add Teacher</button>
+                                    </div>
+                                </form>
+                            </FocusPanel>
+                        </div>
+                    )}
+
+                    {bookingModal.isOpen && (
+                        <>
+                            {compactViewport && <div className="drawer-backdrop no-print" aria-hidden="true" />}
+                            <FocusPanel className="booking-panel no-print" titleId="booking-heading" onClose={closeBooking} modal={compactViewport} busy={isSaving}>
+                                <header className="panel-header">
+                                    <div><h2 id="booking-heading">{bookingModal.isEditing ? 'Edit reservation' : bookingModal.existingBooking ? 'Reservation details' : bookingModal.isBatch ? 'Batch reservation' : 'New reservation'}</h2>
+                                        <p>{selectedCart} · {cartData[selectedCart]?.type}</p></div>
+                                    <IconButton label="Close reservation" name="xmark" className="quiet" onClick={closeBooking} disabled={isSaving} />
+                                </header>
+                                <form className="booking-form" onSubmit={event => { event.preventDefault(); if (bookingModal.isEditing) updateBooking(); else if (!bookingModal.existingBooking) checkConflictsAndSubmit(); }}>
+                                    <div className="panel-body">
+                                        <dl className="booking-summary">
+                                            <div><dt>{bookingModal.isBatch ? 'WEEK' : 'DATE'}</dt><dd>{bookingModal.isBatch ? `Week ${selectedWeek}` : getSlotDate(selectedWeek, bookingModal.dayIdx)?.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</dd></div>
+                                            <div><dt>{bookingModal.isBatch ? 'SELECTED' : 'PERIOD'}</dt><dd>{bookingModal.isBatch ? `${batchSelection.length} slots` : `P${bookingModal.periodId} · ${periods.find(period => period.id == bookingModal.periodId)?.time || ''}`}</dd></div>
+                                        </dl>
+                                        {bookingModal.isBatch && <ul className="batch-slot-list">{batchSelection.map(slot => <li key={slot.slotId}>{currentDays[slot.dayIdx]} {getDateForDayIdx(selectedWeek, slot.dayIdx)} · P{slot.periodId}</li>)}</ul>}
+                                        {bookingModal.existingBooking && !bookingModal.isEditing ? (
+                                            <>
+                                                <dl className="booking-detail">
+                                                    <div><dt>Teacher</dt><dd>{bookingModal.existingBooking.name}</dd></div>
+                                                    <div><dt>Class / subject</dt><dd>{bookingModal.existingBooking.className}</dd></div>
+                                                    <div><dt>Devices</dt><dd>{getBookingQuantity(bookingModal.existingBooking)} devices</dd></div>
+                                                </dl>
+                                                {bookingModal.isPast && <p className="availability-note"><Icon name="clock-rotate-left" />Past reservation</p>}
+                                                {!isAdmin && bookingModal.existingBooking.ownerEmail !== currentUser?.email && <p className="availability-note"><Icon name="lock" />Booked by another teacher</p>}
+                                            </>
+                                        ) : (
+                                            <>
+                                                <fieldset disabled={isSaving} className="booking-fields">
+                                                    <label className="field" htmlFor="booking-teacher">Teacher
+                                                        <input id="booking-teacher" required autoComplete="name" maxLength="100" value={bookingFormData.name} onChange={event => setBookingFormData({...bookingFormData, name: event.target.value})} />
+                                                    </label>
+                                                    <label className="field" htmlFor="booking-subject">Class / subject
+                                                        <input id="booking-subject" required maxLength="120" value={bookingFormData.subject} onChange={event => setBookingFormData({...bookingFormData, subject: event.target.value})} />
+                                                    </label>
+                                                    <div className="field">
+                                                        <label htmlFor="booking-quantity">Devices</label>
+                                                        <div className="quantity-stepper">
+                                                            <button type="button" title="Fewer devices" aria-label="Fewer devices" disabled={isSaving || Number(bookingFormData.quantity) <= 1} onClick={() => setBookingFormData({...bookingFormData, quantity: Math.max(1, Number(bookingFormData.quantity) - 1)})}><Icon name="minus" /></button>
+                                                            <input id="booking-quantity" type="number" required min="1" max={bookingModalAvailableQuantity} step="1" inputMode="numeric" aria-describedby="booking-availability" value={bookingFormData.quantity} onChange={event => setBookingFormData({...bookingFormData, quantity: event.target.value})} />
+                                                            <button type="button" title="More devices" aria-label="More devices" disabled={isSaving || Number(bookingFormData.quantity) >= bookingModalAvailableQuantity} onClick={() => setBookingFormData({...bookingFormData, quantity: Math.min(bookingModalAvailableQuantity, Number(bookingFormData.quantity) + 1)})}><Icon name="plus" /></button>
+                                                        </div>
+                                                    </div>
+                                                </fieldset>
+                                                <p id="booking-availability" className={`availability-note ${bookingModalAvailableQuantity < Number(bookingFormData.quantity) ? 'invalid' : ''}`} role="status">
+                                                    <Icon name={bookingModalAvailableQuantity > 0 ? 'circle-check' : 'circle-exclamation'} />
+                                                    {bookingModalAvailableQuantity} devices {bookingModal.isEditing ? 'maximum' : 'available'}{bookingModal.isBatch ? ' in every selected slot' : ''}
+                                                </p>
+                                            </>
+                                        )}
+                                    </div>
+                                    <footer key={bookingModal.isEditing ? 'edit-actions' : bookingModal.existingBooking ? 'detail-actions' : 'new-actions'} className="panel-footer">
+                                        {bookingModal.existingBooking && !bookingModal.isEditing ? (
+                                            (isAdmin || bookingModal.existingBooking.ownerEmail === currentUser?.email) && (!bookingModal.isPast || isAdmin) ? (
+                                                <>
+                                                    <button type="button" className="ui-button danger" disabled={isSaving} onClick={() => showConfirm('Cancel this reservation? The devices will become available to other teachers.', cancelBooking)}>Cancel reservation</button>
+                                                    <button type="button" className="ui-button" disabled={isSaving} onClick={handleEditClick}><Icon name="pen" />Edit</button>
+                                                </>
+                                            ) : <button type="button" className="ui-button" onClick={closeBooking}>Close</button>
+                                        ) : (
+                                            <>
+                                                <button type="button" className="ui-button" disabled={isSaving} onClick={() => bookingModal.isEditing ? setBookingModal(previous => ({...previous, isEditing: false})) : closeBooking()}>Cancel</button>
+                                                <button type="submit" className="ui-button primary" disabled={isSaving || bookingModalAvailableQuantity < 1}>
+                                                    <i aria-hidden="true" className={`fa-solid ${isSaving ? 'fa-spinner fa-spin' : 'fa-check'}`} />
+                                                    {isSaving ? 'Saving...' : bookingModal.isEditing ? 'Save changes' : 'Confirm booking'}
+                                                </button>
+                                            </>
+                                        )}
+                                    </footer>
+                                </form>
+                            </FocusPanel>
+                        </>
+                    )}
+
+                    {editCartModal.isOpen && (
+                        <div className="legacy-view legacy-modal fixed inset-0 bg-slate-900/60 flex items-center justify-center p-4 z-50 overflow-y-auto no-print backdrop-blur-sm">
+                            <FocusPanel titleId="equipment-heading" onClose={() => setEditCartModal({ isOpen: false, cartName: null, data: null })} className="bg-white rounded-[2rem] border-2 border-duo-grayBorder shadow-2xl w-full max-w-lg my-8 animate-[fadeIn_0.15s_ease-out] overflow-hidden">
+                                <div className="p-6 border-b-2 border-duo-grayBorder bg-duo-grayLight flex justify-between items-center">
+                                    <h3 id="equipment-heading" className="font-extrabold text-xl text-duo-text"><i aria-hidden="true" className="fa-solid fa-cube text-duo-blue mr-2"></i>{editCartModal.cartName ? 'Edit Equipment' : 'Add Equipment'}</h3>
+                                    <button type="button" aria-label="Close equipment form" title="Close equipment form" onClick={() => setEditCartModal({ isOpen: false, cartName: null, data: null })} className="w-8 h-8 bg-white border-2 border-duo-grayBorder rounded-full text-gray-400 hover:text-duo-text transition-colors flex items-center justify-center"><i aria-hidden="true" className="fa-solid fa-times"></i></button>
+                                </div>
+                                <form onSubmit={saveCartEdit} className="p-6 space-y-5">
+                                    <div><label className="block text-xs font-extrabold text-gray-400 uppercase tracking-wider mb-1">Name</label><input required name="name" defaultValue={editCartModal.cartName || ''} placeholder="e.g., Cart 15" className="w-full px-4 py-3 bg-white border-2 border-duo-grayBorder rounded-xl focus:border-duo-blue outline-none font-bold" /></div>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div><label className="block text-xs font-extrabold text-gray-400 uppercase tracking-wider mb-1">Type</label><select name="type" defaultValue={editCartModal.data?.type || 'Chromebook'} className="w-full px-4 py-3 bg-white border-2 border-duo-grayBorder rounded-xl focus:border-duo-blue outline-none font-bold"><option value="Chromebook">Chromebook</option><option value="iPad">iPad</option><option value="PC Lab">PC Lab</option></select></div>
+                                        <div><label className="block text-xs font-extrabold text-gray-400 uppercase tracking-wider mb-1">Capacity</label><input required type="number" name="capacity" defaultValue={editCartModal.data?.capacity || 30} min="1" className="w-full px-4 py-3 bg-white border-2 border-duo-grayBorder rounded-xl focus:border-duo-blue outline-none font-bold" /></div>
+                                    </div>
+                                    <div><label className="block text-xs font-extrabold text-gray-400 uppercase tracking-wider mb-1">Location</label><input required name="location" defaultValue={editCartModal.data?.location || ''} placeholder="e.g., SAO" className="w-full px-4 py-3 bg-white border-2 border-duo-grayBorder rounded-xl focus:border-duo-blue outline-none font-bold" /></div>
+                                    <div><label className="block text-xs font-extrabold text-gray-400 uppercase tracking-wider mb-1">Notes (Optional)</label><textarea name="notes" defaultValue={editCartModal.data?.notes || ''} placeholder="e.g., #04 under maintenance" rows="2" className="w-full px-4 py-3 bg-white border-2 border-duo-grayBorder rounded-xl focus:border-duo-blue outline-none font-bold resize-none" /></div>
+                                    <div className="flex gap-4 pt-4 border-t-2 border-duo-grayBorder">
+                                        <button type="button" onClick={() => setEditCartModal({ isOpen: false, cartName: null, data: null })} className="flex-1 bg-white border-2 border-duo-grayBorder text-gray-400 font-extrabold uppercase py-3 rounded-2xl shadow-duo-gray active:shadow-none active:translate-y-[4px] transition-all">Cancel</button>
+                                        <button type="submit" className="flex-[2] bg-duo-green text-white font-extrabold uppercase py-3 rounded-2xl shadow-duo-green active:shadow-none active:translate-y-[4px] transition-all">Save</button>
+                                    </div>
+                                </form>
+                            </FocusPanel>
+                        </div>
+                    )}
+
+                    {lockModal.isOpen && (
+                        <div className="legacy-view legacy-modal fixed inset-0 bg-slate-900/60 flex items-center justify-center p-4 z-[60] overflow-y-auto no-print backdrop-blur-sm">
+                            <FocusPanel titleId="lock-heading" onClose={() => setLockModal({ isOpen: false, lockId: null, data: null })} className="bg-white rounded-[2rem] border-2 border-duo-grayBorder shadow-2xl w-full max-w-lg my-8 animate-[fadeIn_0.15s_ease-out] overflow-hidden">
+                                <div className="p-6 border-b-2 border-duo-grayBorder bg-duo-grayLight flex justify-between items-center">
+                                    <h3 id="lock-heading" className="font-extrabold text-xl text-duo-text"><i aria-hidden="true" className="fa-solid fa-lock text-duo-red mr-2"></i>{lockModal.lockId ? '編輯鎖定' : '新增鎖定'}</h3>
+                                    <button type="button" aria-label="Close lock form" title="Close lock form" onClick={() => setLockModal({ isOpen: false, lockId: null, data: null })} className="w-8 h-8 bg-white border-2 border-duo-grayBorder rounded-full text-gray-400 hover:text-duo-text transition-colors flex items-center justify-center"><i aria-hidden="true" className="fa-solid fa-times"></i></button>
+                                </div>
+                                <form onSubmit={saveLock} className="p-6 space-y-5">
+                                    <div>
+                                        <label className="block text-xs font-extrabold text-gray-400 uppercase tracking-wider mb-1">名稱</label>
+                                        <input required name="name" defaultValue={lockModal.data?.name || ''} placeholder="例如：校務會議" className="w-full px-4 py-3 bg-white border-2 border-duo-grayBorder rounded-xl focus:border-duo-blue outline-none font-bold" />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-extrabold text-gray-400 uppercase tracking-wider mb-1">Cart</label>
+                                        <select required name="cartName" defaultValue={lockModal.data?.cartName || ''} className="w-full px-4 py-3 bg-white border-2 border-duo-grayBorder rounded-xl focus:border-duo-blue outline-none font-bold">
+                                            <option value="">-- 請選擇 --</option>
+                                            {sortedAllCarts.map(([name]) => <option key={name} value={name}>{name}</option>)}
+                                        </select>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="block text-xs font-extrabold text-gray-400 uppercase tracking-wider mb-1">星期</label>
+                                            <select required name="dayIdx" defaultValue={lockModal.data?.dayIdx ?? 0} className="w-full px-4 py-3 bg-white border-2 border-duo-grayBorder rounded-xl focus:border-duo-blue outline-none font-bold">
+                                                {currentDays.map((d, i) => <option key={d} value={i}>{d}</option>)}
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-extrabold text-gray-400 uppercase tracking-wider mb-1">節次</label>
+                                            <select required name="periodId" defaultValue={lockModal.data?.periodId ?? 1} className="w-full px-4 py-3 bg-white border-2 border-duo-grayBorder rounded-xl focus:border-duo-blue outline-none font-bold">
+                                                {periods.filter(p => p.id !== 'lunch').map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="block text-xs font-extrabold text-gray-400 uppercase tracking-wider mb-1">起始週</label>
+                                            <input required type="number" name="startWeek" min="1" max={semesterConfig.totalWeeks} defaultValue={lockModal.data?.startWeek || currentRealWeek || 1} className="w-full px-4 py-3 bg-white border-2 border-duo-grayBorder rounded-xl focus:border-duo-blue outline-none font-bold" />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-extrabold text-gray-400 uppercase tracking-wider mb-1">持續幾週</label>
+                                            <input required type="number" name="weeks" min="1" max={semesterConfig.totalWeeks} defaultValue={lockModal.data?.weeks || 1} className="w-full px-4 py-3 bg-white border-2 border-duo-grayBorder rounded-xl focus:border-duo-blue outline-none font-bold" />
+                                        </div>
+                                    </div>
+                                    <div className="bg-red-50 border-2 border-red-100 rounded-xl p-3 text-xs font-bold text-duo-red">
+                                        <i aria-hidden="true" className="fa-solid fa-triangle-exclamation mr-1"></i> 儲存後，該時段內現有的預約將被覆蓋移除。
+                                    </div>
+                                    <div className="flex gap-4 pt-4 border-t-2 border-duo-grayBorder">
+                                        <button type="button" onClick={() => setLockModal({ isOpen: false, lockId: null, data: null })} className="flex-1 bg-white border-2 border-duo-grayBorder text-gray-400 font-extrabold uppercase py-3 rounded-2xl shadow-duo-gray active:shadow-none active:translate-y-[4px] transition-all">取消</button>
+                                        <button type="submit" className="flex-[2] bg-duo-green text-white font-extrabold uppercase py-3 rounded-2xl shadow-duo-green active:shadow-none active:translate-y-[4px] transition-all">儲存</button>
+                                    </div>
+                                </form>
+                            </FocusPanel>
+                        </div>
+                    )}
+
+                    {alertModal.isOpen && <div className="message-backdrop no-print">
+                        <FocusPanel className="message-dialog" titleId="alert-heading" onClose={() => setAlertModal({ isOpen: false, message: '' })}>
+                            <h2 id="alert-heading">Notice</h2><p>{alertModal.message}</p>
+                            <div className="message-actions"><button type="button" className="ui-button primary" onClick={() => setAlertModal({ isOpen: false, message: '' })}>Got it</button></div>
+                        </FocusPanel>
+                    </div>}
+
+                    {confirmModal.isOpen && <div className="message-backdrop no-print">
+                        <FocusPanel className="message-dialog" titleId="confirm-heading" onClose={() => setConfirmModal({ isOpen: false, message: '', onConfirm: null })}>
+                            <h2 id="confirm-heading">Confirm action</h2><p>{confirmModal.message}</p>
+                            <div className="message-actions">
+                                <button type="button" className="ui-button" onClick={() => setConfirmModal({ isOpen: false, message: '', onConfirm: null })}>Cancel</button>
+                                <button type="button" className="ui-button primary" onClick={() => { confirmModal.onConfirm(); setConfirmModal({ isOpen: false, message: '', onConfirm: null }); }}>Confirm</button>
+                            </div>
+                        </FocusPanel>
+                    </div>}
+
+                    {toast && <div className="toast no-print" role="status"><Icon name="circle-check" /><span>{toast}</span><IconButton label="Dismiss notification" name="xmark" className="quiet" onClick={() => setToast('')} /></div>}
+
+                    <style>{`
+                        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+                        @keyframes bounceIn { 0% { opacity: 0; transform: scale(0.8); } 50% { opacity: 1; transform: scale(1.05); } 100% { opacity: 1; transform: scale(1); } }
+                    `}</style>
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
