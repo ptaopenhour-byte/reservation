@@ -131,7 +131,7 @@
                         </tr>
                     ))}</tbody>
                 </table>
-                <footer className="paper-footer"><span>{cartName} · Week {week}</span><span>IBSH · Equipment reservations</span></footer>
+                <footer className="paper-footer"><span>{cartName} · Week {week}</span><span>IBSH · Chromebook reservations</span></footer>
             </article>;
         }
 
@@ -1453,14 +1453,14 @@
             if (!firebaseReady) {
                 return <div className="auth-shell"><div className="auth-content" role="status">
                     <span className="brand-symbol"><Icon name="laptop" /></span>
-                    <h2>IBSH Carts</h2><p><Icon name="spinner" className="fa-solid fa-spinner fa-spin" /> Connecting...</p>
+                    <h2>IBSH</h2><p><Icon name="spinner" className="fa-solid fa-spinner fa-spin" /> Connecting...</p>
                 </div></div>;
             }
 
             if (!currentUser && !isAdmin) {
                 return <div className="auth-shell"><div className="auth-content">
                     <span className="brand-symbol"><Icon name="laptop" /></span>
-                    <h1>IBSH Carts</h1><p>Equipment reservations</p>
+                    <h1>IBSH</h1><p>Chromebook reservations</p>
                     <p>Sign in with your authorized school Google account.</p>
                     <button onClick={handleGoogleLogin} className="ui-button google-login">
                         <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="" />
@@ -1487,7 +1487,7 @@
                         <IconButton label="Close navigation" name="xmark" className="quiet sidebar-close" onClick={() => setSidebarOpen(false)} />
                         <button className="brand" onClick={goHome} disabled={isSaving}>
                             <span className="brand-symbol"><Icon name="laptop" /></span>
-                            <span><strong>IBSH Carts</strong><small>Equipment reservations</small></span>
+                            <span><strong>IBSH</strong><small>Chromebook reservations</small></span>
                         </button>
                         <nav className="sidebar-nav">
                             <button className={`nav-item ${currentView === 'schedule' ? 'active' : ''}`} aria-current={currentView === 'schedule' ? 'page' : undefined} onClick={goHome} disabled={isSaving}><Icon name="calendar-days" /><span>Schedule</span></button>
