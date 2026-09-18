@@ -294,8 +294,120 @@ button.slot-availability:hover:not(:disabled) { background: #f0f5ff; color: var(
     .booking-list-actions { order: 3; justify-content: flex-end; }
     .toast { width: max-content; }
 }
+.print-workspace { border-top: 1px solid var(--line); }
+.print-layout { display: grid; grid-template-columns: 272px minmax(0, 1fr); align-items: stretch; min-height: calc(100dvh - 160px); }
+.print-controls { padding: 24px 20px; border-right: 1px solid var(--line); min-width: 0; }
+.print-section-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 20px; }
+.print-controls h2, .print-preview h2 { font-size: 14px; font-weight: 600; margin: 0; }
+.print-section-heading > span { font-size: 11px; color: var(--muted); }
+.print-controls input[type="checkbox"] { width: 15px; height: 15px; margin: 0; accent-color: var(--blue); cursor: pointer; flex: 0 0 15px; }
+.print-select-all { display: flex; align-items: center; gap: 9px; font-size: 12px; color: var(--muted); padding-bottom: 16px; border-bottom: 1px solid var(--line); cursor: pointer; }
+.print-equipment-list { margin: 8px -8px 24px; display: grid; gap: 4px; }
+.print-equipment-option { display: flex; align-items: flex-start; gap: 10px; padding: 12px 8px; border-radius: 5px; cursor: pointer; }
+.print-equipment-option:hover { background: #f7f8fa; }
+.print-equipment-option.selected { background: var(--blue-soft); }
+.print-equipment-option input, .print-equipment-option > i { margin-top: 3px; }
+.print-equipment-option > i { width: 16px; flex: 0 0 16px; color: var(--muted); font-size: 14px; }
+.print-equipment-option.selected > i { color: var(--blue); }
+.print-equipment-option > span { min-width: 0; }
+.print-equipment-option strong { display: block; font-size: 13px; font-weight: 500; overflow-wrap: anywhere; }
+.print-equipment-option small { display: block; font-size: 11px; color: var(--muted); line-height: 1.6; margin-top: 3px; overflow-wrap: anywhere; }
+.print-options { padding: 20px 0; border-block: 1px solid var(--line); display: grid; gap: 14px; }
+.print-options h2 { margin-bottom: 2px; }
+.print-options label { display: flex; align-items: center; gap: 9px; cursor: pointer; font-size: 12px; }
+.print-specs { display: grid; gap: 10px; padding: 20px 0; font-size: 12px; }
+.print-specs > div { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.print-specs dt { color: var(--muted); }
+.print-specs dd { margin: 0; }
+.print-submit .ui-button { width: 100%; min-height: 40px; }
+.print-preview { min-width: 0; background: #f1f3f6; padding: 20px 24px 32px; }
+.print-preview-toolbar { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 20px; }
+.print-preview-toolbar > div:first-child { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px; min-width: 0; }
+.print-preview-toolbar span { font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
+.print-preview-actions { display: flex; align-items: center; gap: 6px; }
+.print-preview-actions .icon-button { height: 32px; width: 32px; min-height: 32px; flex-basis: 32px; }
+.print-zoom { display: flex; align-items: center; gap: 7px; height: 32px; border: 1px solid var(--line); border-radius: 5px; background: #fff; padding: 0 8px; color: var(--muted); font-size: 12px; }
+.print-zoom select { background: transparent; color: var(--ink); max-width: 110px; padding: 4px 0; font-size: 12px; }
+.print-preview-scroll { width: 100%; overflow: auto; max-height: 1000px; overscroll-behavior: contain; border: 1px solid #dce1e9; }
+.print-preview-frame { position: relative; margin: 0 auto; }
+.print-preview-paper { width: 297mm; min-height: 210mm; background: #fff; transform-origin: top left; }
+.print-preview-paper .reservation-sheet { width: 297mm; min-height: 210mm; padding: 10mm; }
+.print-empty-state { min-height: 390px; justify-content: center; }
+.print-only { display: none; }
+.reservation-sheet { color: #202531; background: #fff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; line-height: 1.25; }
+.paper-header { display: flex; align-items: flex-end; justify-content: space-between; gap: 8mm; padding-bottom: 4mm; border-bottom: .5mm solid #253044; margin-bottom: 4mm; break-inside: avoid; }
+.paper-identity { min-width: 0; }
+.paper-brand { display: flex; align-items: center; gap: 2mm; font-size: 8pt; font-weight: 600; margin-bottom: 3mm; }
+.paper-brand i { font-size: 10pt; }
+.paper-header h2 { font-size: 19pt; line-height: 1.2; font-weight: 600; margin: 0 0 2mm; overflow-wrap: anywhere; }
+.paper-header p { font-size: 8pt; color: #536071; margin: 0; overflow-wrap: anywhere; }
+.paper-week { text-align: right; flex: 0 0 auto; }
+.paper-week strong { display: block; font-size: 13pt; font-weight: 600; }
+.paper-week span { display: block; font-size: 9pt; margin-top: 2mm; }
+.paper-week small { display: block; font-size: 7pt; color: #657083; margin-top: 2mm; }
+.paper-note { margin: 0 0 4mm; padding: 2mm 3mm; border-left: .6mm solid #8792a3; background: #f3f4f6; font-size: 7.5pt; line-height: 1.5; overflow-wrap: anywhere; }
+.paper-note strong { font-weight: 600; margin-right: 2mm; }
+.paper-table { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 8pt; }
+.paper-period-column { width: 19mm; }
+.paper-table th, .paper-table td { border: .2mm solid #bdc5d0; vertical-align: top; padding: 1.5mm 2mm; overflow-wrap: anywhere; }
+.paper-table thead th { text-align: center; background: #edf0f4; font-weight: 600; font-size: 8pt; }
+.paper-table thead small { display: block; font-weight: 400; color: #536071; font-size: 7pt; margin-top: 1mm; }
+.paper-table .paper-context th { padding: 1.5mm 2mm; background: #fff; text-align: left; color: #536071; font-weight: 400; font-size: 7pt; }
+.paper-table .paper-period { vertical-align: middle; font-size: 9pt; font-weight: 600; text-align: left; background: #fafbfc; }
+.paper-period small { display: block; font-size: 6.5pt; color: #657083; font-weight: 400; margin-top: 1.5mm; white-space: nowrap; }
+.paper-table tbody td { height: 15mm; }
+.paper-booking { break-inside: avoid; page-break-inside: avoid; padding: .5mm 0; }
+.paper-booking + .paper-booking { border-top: .2mm dotted #bdc5d0; padding-top: 2mm; margin-top: 2mm; }
+.paper-booking-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 2mm; }
+.paper-booking-heading strong { min-width: 0; font-size: 8.5pt; font-weight: 600; }
+.paper-booking-heading > span { flex-shrink: 0; font-size: 7pt; color: #536071; }
+.paper-booking p { font-size: 7.5pt; margin: .5mm 0 0; line-height: 1.2; }
+.paper-signatures { display: flex; gap: 2mm; color: #657083; margin-top: 1.5mm; font-size: 6.5pt; line-height: 1.2; }
+.paper-signatures > span { display: flex; align-items: baseline; gap: 1mm; flex: 1; min-width: 0; }
+.paper-signatures i { display: block; flex: 1; height: 2mm; border-bottom: .2mm solid #a5aebc; }
+.paper-empty { min-height: 10mm; padding-top: 5mm; }
+.paper-empty .paper-signatures { margin-top: 2mm; }
+.paper-table .paper-locked { background: #f4f5f7; vertical-align: middle; }
+.paper-lock { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 1.5mm; font-size: 7pt; padding: 1mm; }
+.paper-lock strong { font-weight: 500; }
+.paper-lock span { display: block; width: 100%; text-align: center; color: #657083; font-size: 6.5pt; }
+.paper-table .paper-lunch td { height: auto; padding: 1.5mm 2mm; background: #f4f5f7; color: #657083; font-size: 7pt; }
+.paper-footer { display: flex; justify-content: space-between; gap: 5mm; padding-top: 3mm; font-size: 7pt; color: #657083; break-inside: avoid; }
+@media (max-width: 1100px) {
+    .print-layout { grid-template-columns: 232px minmax(0, 1fr); }
+    .print-controls { padding: 20px 16px; }
+    .print-preview { padding: 20px 16px; }
+}
+@media (max-width: 767px) {
+    .print-layout { grid-template-columns: minmax(0, 1fr); }
+    .print-controls { border-right: 0; border-bottom: 1px solid var(--line); }
+    .print-equipment-list { grid-template-columns: repeat(2, minmax(0, 1fr)); margin-bottom: 16px; }
+    .print-equipment-option { gap: 8px; }
+    .print-equipment-option > i { display: none; }
+    .print-equipment-option small { font-size: 10px; }
+    .print-options { gap: 12px; }
+    .print-specs { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+    .print-specs > div { display: block; }
+    .print-specs dd { margin-top: 4px; }
+    .print-preview { padding: 18px 16px 24px; }
+    .print-preview-toolbar { align-items: flex-start; }
+    .print-preview-toolbar > div:first-child { width: 100%; }
+    .print-preview-actions { width: 100%; }
+    .print-zoom { margin-left: auto; }
+    .print-empty-state { min-height: 220px; }
+}
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; } }
 @media print {
+    @page { size: A4 landscape; margin: 10mm; }
+    html, body { background: #fff; margin: 0; padding: 0; height: auto !important; overflow: visible !important; }
+    .no-print, .legacy-modal { display: none !important; }
     .sidebar, .workspace, .booking-panel, .drawer-backdrop, .message-backdrop, .toast { display: none !important; }
     .app-shell { min-height: 0; }
+    .print-only { display: block !important; width: 100%; }
+    .reservation-sheet { width: 100%; padding: 0; min-height: 0; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+    .reservation-sheet + .reservation-sheet { break-before: page; page-break-before: always; }
+    .paper-table thead { display: table-header-group; }
+    .paper-table tr { break-inside: auto; }
+    .paper-lunch, .paper-table thead { break-inside: avoid; }
+    .paper-table { overflow: visible; }
 }

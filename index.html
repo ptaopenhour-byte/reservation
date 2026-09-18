@@ -41,18 +41,6 @@
     <script src="https://unpkg.com/@babel/standalone@7.24.7/babel.min.js"></script>
 
     <style>
-        @media print {
-            @page { size: A4 landscape; margin: 10mm; }
-            body { background: white; margin: 0; padding: 0; }
-            .no-print { display: none !important; }
-            .print-only { display: block !important; width: 100%; }
-            .page-break { page-break-after: always; height: 96vh; display: flex; flex-direction: column; }
-            table { width: 100%; flex-grow: 1; border-collapse: collapse; table-layout: fixed; }
-            th, td { border: 1px solid #000; text-align: center; vertical-align: middle; font-family: sans-serif; word-wrap: break-word; overflow: hidden; }
-            th { background-color: #f3f4f6 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; font-weight: bold; }
-            .col-period { width: 65px; } 
-            .print-lunch { background-color: #e5e7eb !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; letter-spacing: 2px; font-size: 14px; }
-        }
         .hide-scrollbar::-webkit-scrollbar { display: none; }
         .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
     </style>      
@@ -81,6 +69,71 @@
         const IconButton = ({ label, name, className = '', ...props }) => (
             <button type="button" className={`icon-button ${className}`} aria-label={label} title={label} {...props}><Icon name={name} /></button>
         );
+
+        function SelectionCheckbox({ mixed = false, ...props }) {
+            const inputRef = useRef(null);
+            useEffect(() => { if (inputRef.current) inputRef.current.indeterminate = mixed; }, [mixed]);
+            return <input ref={inputRef} type="checkbox" {...props} />;
+        }
+
+        function PaperPreview({ children, actualSize }) {
+            const viewportRef = useRef(null);
+            const paperRef = useRef(null);
+            const [size, setSize] = useState({ scale: 1, height: 794, width: 1123 });
+            useEffect(() => {
+                const measure = () => {
+                    const width = paperRef.current.offsetWidth;
+                    const availableWidth = viewportRef.current.clientWidth;
+                    if (!width || !availableWidth) return;
+                    const scale = actualSize ? 1 : Math.min(1, availableWidth / width);
+                    setSize({ scale, height: paperRef.current.offsetHeight * scale, width: width * scale });
+                };
+                const observer = new ResizeObserver(measure);
+                observer.observe(viewportRef.current);
+                observer.observe(paperRef.current);
+                return () => observer.disconnect();
+            }, [actualSize]);
+            return <div className="print-preview-scroll" ref={viewportRef}>
+                <div className="print-preview-frame" style={{ width: size.width, height: size.height }}>
+                    <div ref={paperRef} className="print-preview-paper" style={{ transform: `scale(${size.scale})` }}>{children}</div>
+                </div>
+            </div>;
+        }
+
+        function ReservationSheet({ cartName, cart, week, dateRange, days, rows, options }) {
+            const signatures = () => <div className="paper-signatures"><span>Out <i /></span><span>Return <i /></span></div>;
+            return <article className="reservation-sheet" aria-label={`${cartName} reservation sheet`}>
+                <header className="paper-header">
+                    <div className="paper-identity"><div className="paper-brand"><Icon name="laptop" />IBSH Carts</div><h2>{cartName}</h2><p>{cart.type} · {cart.capacity} devices · {cart.location}</p></div>
+                    <div className="paper-week"><strong>Week {week}</strong><span>{dateRange}</span><small>Equipment reservation record</small></div>
+                </header>
+                {options.notes && cart.notes && <p className="paper-note"><strong>Equipment note</strong> {cart.notes}</p>}
+                <table className="paper-table">
+                    <colgroup><col className="paper-period-column" />{days.map(day => <col key={day.name} />)}</colgroup>
+                    <thead>
+                        <tr className="paper-context"><th colSpan={days.length + 1}>{cartName} · Week {week} · {dateRange}</th></tr>
+                        <tr><th scope="col">Period</th>{days.map(day => <th scope="col" key={day.name}><span>{day.name}</span><small>{day.date}</small></th>)}</tr>
+                    </thead>
+                    <tbody>{rows.map(row => row.id === 'lunch' ? (
+                        <tr key="lunch" className="paper-lunch"><td colSpan={days.length + 1}>Lunch · {row.time}</td></tr>
+                    ) : (
+                        <tr key={row.id}>
+                            <th scope="row" className="paper-period">P{row.id}<small>{row.time}</small></th>
+                            {row.slots.map((slot, dayIdx) => <td key={dayIdx} className={slot.lock ? 'paper-locked' : ''}>
+                                {slot.lock ? <div className="paper-lock"><Icon name="lock" /><strong>{slot.lock.name}</strong><span>Unavailable</span></div> : slot.bookings.length ? (
+                                    slot.bookings.map((booking, index) => <div className="paper-booking" key={booking.id || index}>
+                                        <div className="paper-booking-heading"><strong>{booking.name}</strong><span>{booking.quantity} devices</span></div>
+                                        <p>{booking.className}</p>
+                                        {options.signatures && signatures()}
+                                    </div>)
+                                ) : <div className="paper-empty">{options.signatures && signatures()}</div>}
+                            </td>)}
+                        </tr>
+                    ))}</tbody>
+                </table>
+                <footer className="paper-footer"><span>{cartName} · Week {week}</span><span>IBSH · Equipment reservations</span></footer>
+            </article>;
+        }
 
         function FocusPanel({ children, onClose, modal = true, busy = false, className = '', titleId }) {
             const panelRef = useRef(null);
@@ -194,6 +247,9 @@
             const [editBookForm, setEditBookForm] = useState({ name: '', email: '', subject: '', quantity: 1 });
             const [editCartModal, setEditCartModal] = useState({ isOpen: false, cartName: null, data: null });
             const [printSelection, setPrintSelection] = useState([]);
+            const [printPreviewCart, setPrintPreviewCart] = useState(null);
+            const [printActualSize, setPrintActualSize] = useState(false);
+            const [printOptions, setPrintOptions] = useState({ signatures: true, notes: true });
 
             const [recurringLocks, setRecurringLocks] = useState([]);
             const [lockModal, setLockModal] = useState({ isOpen: false, lockId: null, data: null });
@@ -1367,6 +1423,24 @@
             const bookingFormData = bookingModal.isEditing ? editBookForm : bookForm;
             const setBookingFormData = bookingModal.isEditing ? setEditBookForm : setBookForm;
 
+            const selectedPrintCarts = sortedAllCarts.filter(([name]) => printSelection.includes(name));
+            const previewCartName = selectedPrintCarts.find(([name]) => name === printPreviewCart)?.[0] || selectedPrintCarts[0]?.[0];
+            const previewCartIndex = selectedPrintCarts.findIndex(([name]) => name === previewCartName);
+            const printReady = cartsLoaded && semesterConfigLoaded && !dataError;
+            const printDocumentCarts = currentView === 'print' ? selectedPrintCarts : sortedAllCarts.filter(([name]) => name === selectedCart);
+            const countWeeklyBookings = cart => currentDays.reduce((total, day, dayIdx) => total + periods.filter(period => period.id !== 'lunch').reduce((count, period) => count + normalizeSlotBookings(cart.schedule?.[`w${selectedWeek}_d${dayIdx}_p${period.id}`]).length, 0), 0);
+            const renderPrintSheet = cartName => <ReservationSheet cartName={cartName} cart={cartData[cartName]} week={selectedWeek} dateRange={getWeekHeading()} options={printOptions}
+                days={currentDays.map((name, dayIdx) => ({ name, date: getDateForDayIdx(selectedWeek, dayIdx) }))}
+                rows={periods.map(period => ({ ...period, slots: currentDays.map((day, dayIdx) => ({
+                    lock: getLockForSlot(cartName, selectedWeek, dayIdx, period.id),
+                    bookings: normalizeSlotBookings(cartData[cartName]?.schedule?.[`w${selectedWeek}_d${dayIdx}_p${period.id}`])
+                })) }))} />;
+            const printRecords = async () => {
+                if (!printReady || selectedPrintCarts.length === 0) return;
+                try { await document.fonts.ready; window.print(); }
+                catch (error) { showAlert('Printing is unavailable. Please try again in your browser.'); }
+            };
+
             if (firebaseReady === 'auth-error') {
                 return <div className="auth-shell"><div className="auth-content">
                     <Icon name="triangle-exclamation" />
@@ -1378,14 +1452,14 @@
 
             if (!firebaseReady) {
                 return <div className="auth-shell"><div className="auth-content" role="status">
-                    <span className="brand-symbol"><Icon name="cart-shopping" /></span>
+                    <span className="brand-symbol"><Icon name="laptop" /></span>
                     <h2>IBSH Carts</h2><p><Icon name="spinner" className="fa-solid fa-spinner fa-spin" /> Connecting...</p>
                 </div></div>;
             }
 
             if (!currentUser && !isAdmin) {
                 return <div className="auth-shell"><div className="auth-content">
-                    <span className="brand-symbol"><Icon name="cart-shopping" /></span>
+                    <span className="brand-symbol"><Icon name="laptop" /></span>
                     <h1>IBSH Carts</h1><p>Equipment reservations</p>
                     <p>Sign in with your authorized school Google account.</p>
                     <button onClick={handleGoogleLogin} className="ui-button google-login">
@@ -1412,7 +1486,7 @@
                         }}>
                         <IconButton label="Close navigation" name="xmark" className="quiet sidebar-close" onClick={() => setSidebarOpen(false)} />
                         <button className="brand" onClick={goHome} disabled={isSaving}>
-                            <span className="brand-symbol"><Icon name="cart-shopping" /></span>
+                            <span className="brand-symbol"><Icon name="laptop" /></span>
                             <span><strong>IBSH Carts</strong><small>Equipment reservations</small></span>
                         </button>
                         <nav className="sidebar-nav">
@@ -1429,7 +1503,7 @@
                                 return carts.length > 0 && <section className="equipment-group" key={type}><h2>{type}</h2>
                                     {carts.map(([name]) => <button key={name} className={`nav-item ${currentView === 'schedule' && selectedCart === name ? 'active' : ''}`}
                                         aria-pressed={selectedCart === name} disabled={isSaving} onClick={() => selectEquipment(name)}>
-                                        <Icon name={type === 'PC Lab' ? 'desktop' : 'cart-shopping'} /><span>{name}</span>
+                                        <Icon name={type === 'Chromebook' ? 'laptop' : type === 'iPad' ? 'tablet-screen-button' : 'desktop'} /><span>{name}</span>
                                     </button>)}
                                 </section>;
                             })}
@@ -1453,7 +1527,7 @@
                                 {currentView === 'schedule' && selectedCart && <p>{cartData[selectedCart]?.type} · {getCartCapacity(selectedCart)} devices · {cartData[selectedCart]?.location}</p>}
                             </div>
                             <div className="header-actions">
-                                <IconButton label="Print records" name="print" onClick={() => { setPrintSelection(selectedCart ? [selectedCart] : []); changeView('print'); }} disabled={isSaving} />
+                                {currentView !== 'print' && <IconButton label="Print records" name="print" onClick={() => { setPrintSelection(selectedCart ? [selectedCart] : []); setPrintPreviewCart(selectedCart); changeView('print'); }} disabled={isSaving} />}
                                 <button className="ui-button" onClick={() => changeView('my-bookings')} disabled={isSaving}><Icon name="calendar-check" />My bookings</button>
                             </div>
                         </header>
@@ -1474,7 +1548,7 @@
                         </div>
                         {dataError && <div className="status-banner error" role="alert"><Icon name="circle-exclamation" /><span>{dataError}</span><button className="ui-button" onClick={() => window.location.reload()}>Retry</button></div>}
                         {!isAdmin && selectedWeek > currentRealWeek + (semesterConfig.maxAdvanceWeeks || 2) && <div className="status-banner"><Icon name="lock" /><span>Booking opens up to {semesterConfig.maxAdvanceWeeks || 2} weeks in advance.</span></div>}
-                        <main className={currentView === 'schedule' ? 'schedule-view' : 'legacy-view'}>
+                        <main className={currentView === 'schedule' ? 'schedule-view' : currentView === 'print' ? 'print-workspace' : 'legacy-view'}>
                         
                         {currentView === 'my-bookings' && (
                             <section className="my-bookings-view">
@@ -1759,132 +1833,58 @@
                         )}
                         
                         {currentView === 'print' && (
-                            <div className="animate-[fadeIn_0.3s_ease-out]">
-                                <div className="mb-6 flex items-center justify-between">
-                                    <button onClick={goBack} className="text-gray-400 font-extrabold uppercase tracking-wider hover:text-duo-text transition-colors flex items-center border-2 border-duo-grayBorder px-4 py-2 rounded-xl bg-white hover:bg-gray-50">
-                                        <i aria-hidden="true" className="fa-solid fa-arrow-left mr-2"></i> Back
-                                    </button>
-                                </div>
-                                <div className="bg-white rounded-[2rem] border-2 border-duo-grayBorder shadow-duo-card p-8">
-                                    <h2 className="text-3xl font-extrabold text-duo-text mb-2"><i aria-hidden="true" className="fa-solid fa-print text-duo-blue mr-3"></i>Print Records</h2>
-                                    <p className="font-bold text-gray-500 mb-8 border-b-2 border-duo-grayBorder pb-4">Week selected: <span className="text-duo-blue font-extrabold px-2 py-1 bg-blue-50 rounded-lg">Week {selectedWeek}</span></p>
-                                    
-                                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 mb-8">
-                                        {sortedAllCarts.map(([name, data]) => {
-                                            const isSelected = printSelection.includes(name);
-                                            return (
-                                                <button type="button" aria-pressed={isSelected} key={name} onClick={() => setPrintSelection(prev => isSelected ? prev.filter(n => n !== name) : [...prev, name])} 
-                                                    className={`p-4 rounded-2xl border-4 cursor-pointer text-center font-extrabold transition-all ${isSelected ? 'border-duo-blue bg-blue-50 text-duo-blue' : 'border-duo-grayBorder text-gray-400 hover:bg-gray-50'}`}>
-                                                    {name}
-                                                    {isSelected && <i aria-hidden="true" className="fa-solid fa-circle-check block mt-2 text-xl"></i>}
-                                                </button>
-                                            );
-                                        })}
+                            <div className="print-layout">
+                                <section className="print-controls" aria-label="Print settings">
+                                    <div className="print-section-heading"><h2>Equipment</h2><span>{selectedPrintCarts.length} selected</span></div>
+                                    <label className="print-select-all">
+                                        <SelectionCheckbox checked={sortedAllCarts.length > 0 && selectedPrintCarts.length === sortedAllCarts.length}
+                                            mixed={selectedPrintCarts.length > 0 && selectedPrintCarts.length < sortedAllCarts.length}
+                                            disabled={!printReady || sortedAllCarts.length === 0}
+                                            onChange={event => setPrintSelection(event.target.checked ? sortedAllCarts.map(([name]) => name) : [])} />
+                                        Select all equipment
+                                    </label>
+                                    <div className="print-equipment-list">
+                                        {sortedAllCarts.map(([name, cart]) => <label className={`print-equipment-option ${printSelection.includes(name) ? 'selected' : ''}`} key={name}>
+                                            <input type="checkbox" checked={printSelection.includes(name)} disabled={!printReady}
+                                                onChange={event => {
+                                                    setPrintSelection(previous => event.target.checked ? [...previous, name] : previous.filter(item => item !== name));
+                                                    if (event.target.checked) setPrintPreviewCart(name);
+                                                }} aria-label={`Print ${name}`} />
+                                            <Icon name={cart.type === 'Chromebook' ? 'laptop' : cart.type === 'iPad' ? 'tablet-screen-button' : 'desktop'} />
+                                            <span><strong>{name}</strong><small>{cart.location}</small><small>{countWeeklyBookings(cart)} reservations this week</small></span>
+                                        </label>)}
                                     </div>
-                                    <div className="flex justify-end gap-4">
-                                        <button onClick={() => window.print()} disabled={printSelection.length===0} className="px-8 py-4 bg-duo-blue text-white font-extrabold uppercase tracking-wider rounded-2xl shadow-[0_4px_0_0_#1899d6] active:shadow-none active:translate-y-[4px] disabled:opacity-50 disabled:cursor-not-allowed transition-all text-lg">
-                                            Start Printing ({printSelection.length})
-                                        </button>
+                                    <section className="print-options">
+                                        <h2>Include</h2>
+                                        <label><input type="checkbox" checked={printOptions.signatures} onChange={event => setPrintOptions(previous => ({...previous, signatures: event.target.checked}))} />Check-out / return fields</label>
+                                        <label><input type="checkbox" checked={printOptions.notes} onChange={event => setPrintOptions(previous => ({...previous, notes: event.target.checked}))} />Equipment notes</label>
+                                    </section>
+                                    <dl className="print-specs"><div><dt>Paper</dt><dd>A4</dd></div><div><dt>Orientation</dt><dd>Landscape</dd></div><div><dt>Week</dt><dd>{selectedWeek}</dd></div></dl>
+                                    <div className="print-submit">
+                                        <button type="button" className="ui-button primary" onClick={printRecords} disabled={!printReady || selectedPrintCarts.length === 0}><Icon name="print" />Print{selectedPrintCarts.length ? ` (${selectedPrintCarts.length})` : ''}</button>
                                     </div>
-                                </div>
+                                </section>
+                                <section className="print-preview" aria-label="Print preview">
+                                    <header className="print-preview-toolbar">
+                                        <div><h2>Preview</h2>{previewCartName && <span>{previewCartName} · {previewCartIndex + 1} of {selectedPrintCarts.length}</span>}</div>
+                                        <div className="print-preview-actions">
+                                            <IconButton label="Previous equipment preview" name="chevron-left" disabled={previewCartIndex <= 0} onClick={() => setPrintPreviewCart(selectedPrintCarts[previewCartIndex - 1][0])} />
+                                            <IconButton label="Next equipment preview" name="chevron-right" disabled={previewCartIndex < 0 || previewCartIndex >= selectedPrintCarts.length - 1} onClick={() => setPrintPreviewCart(selectedPrintCarts[previewCartIndex + 1][0])} />
+                                            <label className="print-zoom"><Icon name="magnifying-glass" /><select aria-label="Preview zoom" value={printActualSize ? 'actual' : 'fit'} onChange={event => setPrintActualSize(event.target.value === 'actual')}><option value="fit">Fit to width</option><option value="actual">100%</option></select></label>
+                                        </div>
+                                    </header>
+                                    {previewCartName && printReady ? <PaperPreview actualSize={printActualSize}>{renderPrintSheet(previewCartName)}</PaperPreview> : (
+                                        <div className="empty-state print-empty-state"><Icon name="file-lines" /><h2>{printReady ? 'No equipment selected' : 'Preview unavailable'}</h2></div>
+                                    )}
+                                </section>
                             </div>
                         )}
                     </main>
                     </div>
 
-<div className="hidden print-only w-full">
-    {printSelection.map((cartName) => (
-        <div key={cartName} className="page-break w-full">
-            <div className="text-center mb-2">
-                <h2 className="text-2xl font-bold">{cartName} Reservation List</h2>
-                <p className="text-sm mt-1">Week {selectedWeek} ( {getWeekDateRange(selectedWeek, allowSaturday)} )</p>
-            </div>
-            
-            <table className="w-full text-xs">
-                <thead>
-                    <tr>
-                        <th className="col-period" rowSpan="2">Period</th>
-                        {currentDays.map((d, dayIdx) => (
-                            <th key={d} colSpan="3" className="py-1">
-                                <span className="text-[14px]">{d}</span> <span style={{fontSize:'11px', fontWeight:'normal', color:'#666'}}>{getDateForDayIdx(selectedWeek, dayIdx)}</span>
-                            </th>
-                        ))}
-                    </tr>
-                    <tr>
-                        {currentDays.map(d => (
-                            <React.Fragment key={d + "-sub"}>
-                                <th className="text-[11px] py-1 bg-[#fafafa]">Teacher</th>
-                                <th className="text-[11px] py-1 bg-[#fafafa]" style={{ width: '40px' }}>Check-out</th>
-                                <th className="text-[11px] py-1 bg-[#fafafa]" style={{ width: '40px' }}>Return</th>
-                            </React.Fragment>
-                        ))}
-                    </tr>
-                </thead>
-                <tbody>
-    {periods.map(period => (
-        <React.Fragment key={period.id}>
-            <tr>
-                <td>
-                    <strong className="text-[13px]">{period.name}</strong><br/>
-                    <span className="text-[10px] text-gray-600">{period.time}</span>
-                </td>
-                {currentDays.map((day, dayIdx) => {
-                    if (period.id === 'lunch') {
-                        return <td key={dayIdx} colSpan="3" className="print-lunch font-bold text-center">Not Avaliable for Lunch</td>;
-                    }
-                    
-                    const booking = cartData[cartName]?.schedule?.[`w${selectedWeek}_d${dayIdx}_p${period.id}`];
-                    const printBookings = normalizeSlotBookings(booking);
-                    const printLock = getLockForSlot(cartName, selectedWeek, dayIdx, period.id);
-
-                    return (
-                        <React.Fragment key={dayIdx}>
-                            <td className="text-left align-top p-1.5 leading-tight">
-                                {printLock ? (
-                                    <div>
-                                        <strong className="text-[12px]">🔒 {printLock.name}</strong>
-                                    </div>
-                                ) : printBookings.length > 0 ? (
-                                    <div>
-                                        {printBookings.map((printBooking, bookingIdx) => (
-                                            <div key={printBooking.id || bookingIdx} className="mb-1">
-                                                <span className="text-[10px] text-gray-600">{printBooking.className} · x{getBookingQuantity(printBooking)}</span><br/>
-                                                <strong className="text-[12px]">{printBooking.name}</strong>
-                                            </div>
-                                        ))}
-                                    </div>
-                                ) : ""}
-                            </td>
-                            <td></td>
-                            <td></td>
-                        </React.Fragment>
-                    );
-                })}
-            </tr>
-
-            {period.id === 'lunch' && (
-                <tr>
-                    <th className="text-[11px] py-1 bg-[#fafafa]">Period</th>
-                    {currentDays.map(d => (
-                        <React.Fragment key={d + "-sub-afternoon"}>
-                            <th className="text-[11px] py-1 bg-[#fafafa]">Teacher</th>
-                            <th className="text-[11px] py-1 bg-[#fafafa]" style={{ width: '40px' }}>Check-out</th>
-                            <th className="text-[11px] py-1 bg-[#fafafa]" style={{ width: '40px' }}>Return</th>
-                        </React.Fragment>
-                    ))}
-                </tr>
-            )}
-        </React.Fragment>
-    ))}
-</tbody>
-
-            </table>
-            
-            <div className="mt-auto pt-3 pb-2 flex justify-between px-8 text-sm font-bold">
-            </div>
-        </div>
-    ))}
-</div>
+                    <div className="print-only">
+                        {printReady && printDocumentCarts.map(([name]) => <React.Fragment key={name}>{renderPrintSheet(name)}</React.Fragment>)}
+                    </div>
                     
                     {adminAddUserModal.isOpen && (
                         <div className="legacy-view legacy-modal fixed inset-0 bg-slate-900/60 flex items-center justify-center p-4 z-[70] backdrop-blur-sm no-print">
