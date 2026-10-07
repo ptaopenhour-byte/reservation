@@ -70,6 +70,31 @@
             <button type="button" className={`icon-button ${className}`} aria-label={label} title={label} {...props}><Icon name={name} /></button>
         );
 
+        class AppErrorBoundary extends React.Component {
+            constructor(props) {
+                super(props);
+                this.state = { error: null };
+            }
+            static getDerivedStateFromError(error) {
+                return { error };
+            }
+            componentDidCatch(error, info) {
+                console.error('Reservation display error:', error, info.componentStack);
+            }
+            render() {
+                if (!this.state.error) return this.props.children;
+                const domChanged = /insertBefore|removeChild|not a child/i.test(this.state.error.message || '');
+                return <div className="auth-shell"><section className="auth-content notranslate" role="alert" lang="zh-Hant" translate="no">
+                    <div className="brand-symbol"><Icon name="laptop" /></div>
+                    <h1>頁面顯示發生錯誤</h1>
+                    <p>{domChanged ? '請重新整理；若持續發生，請暫停翻譯或其他擴充功能，並用無痕視窗測試。' : '請重新整理後再試；若持續發生，請將錯誤代碼提供給管理員。'}</p>
+                    <p>若剛剛已按下確認預約，請先到「My bookings」確認有沒有成功，避免重複登記。</p>
+                    <button type="button" className="ui-button primary" onClick={() => window.location.reload()}><Icon name="rotate-right" /><span>重新整理</span></button>
+                    <p><small>錯誤代碼：{domChanged ? 'UI-DOM-CHANGED' : 'UI-RENDER'}</small></p>
+                </section></div>;
+            }
+        }
+
         function SelectionCheckbox({ mixed = false, ...props }) {
             const inputRef = useRef(null);
             useEffect(() => { if (inputRef.current) inputRef.current.indeterminate = mixed; }, [mixed]);
@@ -1010,7 +1035,8 @@
                             aria-pressed={isBatchMode ? selected : undefined}
                             onClick={() => handleSlotClick(dayIdx, period.id, null)}>
                             {selected && <Icon name={isBatchMode ? 'check' : 'plus'} />}
-                            {isPast && !isAdmin ? 'Past' : beyondLimit ? 'Not yet open' : remaining === 0 ? 'Fully booked' : isBatchMode && selected ? `Selected · ${remaining} available` : `${remaining} available`}
+                            {/* Keep a stable element beside the icon when browser translation replaces text nodes. */}
+                            <span>{isPast && !isAdmin ? 'Past' : beyondLimit ? 'Not yet open' : remaining === 0 ? 'Fully booked' : isBatchMode && selected ? `Selected · ${remaining} available` : `${remaining} available`}</span>
                         </button>
                     </div>
                 );
@@ -1955,7 +1981,7 @@
                                                 </fieldset>
                                                 <p id="booking-availability" className={`availability-note ${bookingModalAvailableQuantity < Number(bookingFormData.quantity) ? 'invalid' : ''}`} role="status">
                                                     <Icon name={bookingModalAvailableQuantity > 0 ? 'circle-check' : 'circle-exclamation'} />
-                                                    {bookingModalAvailableQuantity} devices {bookingModal.isEditing ? 'maximum' : 'available'}{bookingModal.isBatch ? ' in every selected slot' : ''}
+                                                    <span>{`${bookingModalAvailableQuantity} devices ${bookingModal.isEditing ? 'maximum' : 'available'}${bookingModal.isBatch ? ' in every selected slot' : ''}`}</span>
                                                 </p>
                                             </>
                                         )}
@@ -1973,7 +1999,7 @@
                                                 <button type="button" className="ui-button" disabled={isSaving} onClick={() => bookingModal.isEditing ? setBookingModal(previous => ({...previous, isEditing: false})) : closeBooking()}>Cancel</button>
                                                 <button type="submit" className="ui-button primary" disabled={isSaving || bookingModalAvailableQuantity < 1}>
                                                     <i aria-hidden="true" className={`fa-solid ${isSaving ? 'fa-spinner fa-spin' : 'fa-check'}`} />
-                                                    {isSaving ? 'Saving...' : bookingModal.isEditing ? 'Save changes' : 'Confirm booking'}
+                                                    <span>{isSaving ? 'Saving...' : bookingModal.isEditing ? 'Save changes' : 'Confirm booking'}</span>
                                                 </button>
                                             </>
                                         )}
@@ -2090,7 +2116,7 @@
         }
 
         const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(<App />);
+        root.render(<AppErrorBoundary><App /></AppErrorBoundary>);
     </script>
 </body>
 </html>
