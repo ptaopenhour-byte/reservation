@@ -51,11 +51,11 @@
 
     <script type="module">
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js';
-        import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken, GoogleAuthProvider, signInWithPopup, signOut } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js';
+        import { getAuth, onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signOut } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js';
         import { getFirestore, collection, doc, getDoc, setDoc, deleteDoc, onSnapshot, runTransaction, query, orderBy, limit, serverTimestamp, updateDoc, deleteField, writeBatch } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
 
         window.fbModules = {
-            initializeApp, getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken, GoogleAuthProvider, signInWithPopup, signOut,
+            initializeApp, getAuth, onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signOut,
             getFirestore, collection, doc, getDoc, setDoc, deleteDoc, onSnapshot, runTransaction, query, orderBy, limit, serverTimestamp, updateDoc, deleteField, writeBatch
         };
         window.dispatchEvent(new Event('firebaseLoaded'));
@@ -180,8 +180,7 @@
             }}>{children}</section>;
         }
 
-        const isCanvasEnv = typeof __firebase_config !== 'undefined';
-        const defaultFirebaseConfig = {
+        const firebaseConfig = {
             apiKey: "AIzaSyC13KFTs6QifMQc0HVsUstfjAmLbpoF0t4",
             authDomain: "cartreserver.firebaseapp.com",
             projectId: "cartreserver",
@@ -190,20 +189,9 @@
             appId: "1:86740355319:web:66828caf35bbdb04f5abf2"
         };
 
-        const firebaseConfig = isCanvasEnv ? JSON.parse(__firebase_config) : defaultFirebaseConfig;
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'cartreserver-app';
-
-        const initialData = {
-            "Cart 8": { type: "Chromebook", location: "Student Affairs Office", capacity: 30, schedule: {}, notes: "Elevator malfunction, please note", order: 0 },
-            "Cart 4": { type: "Chromebook", location: "Student Affairs Office", capacity: 20, schedule: {}, order: 1 },
-            "Cart 6": { type: "Chromebook", location: "Subject Building", capacity: 22, notes: "Under maintenance (#04, #08)", schedule: {}, order: 2 },
-            "iPad Cart 1": { type: "iPad", location: "Academic Affairs Office", capacity: 21, schedule: {}, order: 3 },
-        };
-
-        const initialUsers = {
-            "bianca@school.edu": { name: "Bianca", email: "bianca@school.edu", defaultClass: "11A", customClass: "" },
-            "yvonne@school.edu": { name: "Yvonne", email: "yvonne@school.edu", defaultClass: "11B", customClass: "" }
-        };
+        const ADMIN_EMAIL = 'ptaopenhour@ibsh.tw';
+        // This is a temporary containment build. Firestore Rules enforce the restriction.
+        const RESERVATIONS_PAUSED = true;
 
         const periods = [
             { id: 1, time: "8:10-9:00", name: "Period 1" }, { id: 2, time: "9:10-10:00", name: "Period 2" },
@@ -261,6 +249,15 @@
             
             const [currentUser, setCurrentUser] = useState(null);
             const [isAdmin, setIsAdmin] = useState(false);
+            const canWriteReservations = !!currentUser && (isAdmin || !RESERVATIONS_PAUSED);
+            const requireAdmin = () => !!(isAdmin && currentUser && dbRefs?.auth.currentUser?.uid === currentUser.uid);
+            const requireReservationWrite = () => {
+                if (!canWriteReservations || dbRefs?.auth.currentUser?.uid !== currentUser?.uid) {
+                    showAlert('Reservations are temporarily read-only. Please contact the administrator.');
+                    return false;
+                }
+                return true;
+            };
             
             const [authMode, setAuthMode] = useState('login');
             
@@ -361,71 +358,69 @@
                 if (!allowSaturday && mobileDay > 4) setMobileDay(4);
             }, [allowSaturday, mobileDay]);
 
-            // 🔧 FIX [安全]: 移除 signInAnonymously，改為僅 Google 登入
-        // 原本每個訪客都會建立匿名帳號，導致 Firebase Auth 充滿無用帳號，
-        // 且匿名帳號也能通過 rules 的 isAuthenticated() 讀寫資料。
-        // 現在改為：頁面載入 → 顯示登入畫面 → Google 登入後才能存取 Firestore。
-        // onAuthStateChanged 負責在頁面重新整理時自動恢復 Google session。
-        useEffect(() => {
-                const initFirebase = async () => {
+            useEffect(() => {
+                let disposed = false;
+                let authVersion = 0;
+                let unsubscribeAuth;
+                const clearSession = () => {
+                    setCurrentUser(null); setIsAdmin(false); setCartData({}); setUsersDB({}); setActivityLogs([]);
+                    setCartsLoaded(false); setSemesterConfigLoaded(false); setDataError('');
+                    setSelectedCart(null); setRecurringLocks([]); setAllowSaturday(false);
+                    setBookingModal({ isOpen: false }); setBatchSelection([]); setIsBatchMode(false);
+                    setEditCartModal({ isOpen: false }); setLockModal({ isOpen: false });
+                    setAdminAddUserModal({ isOpen: false }); setConfirmModal({ isOpen: false });
+                    setCurrentView('schedule'); setViewHistory(['schedule']);
+                    setPrintSelection([]); setPrintPreviewCart(null);
+                };
+                const initFirebase = () => {
                     const fb = window.fbModules;
                     const app = fb.initializeApp(firebaseConfig);
                     const auth = fb.getAuth(app);
                     const db = fb.getFirestore(app);
-
-                    const getCol = (colName) => isCanvasEnv
-                        ? fb.collection(db, 'artifacts', appId, 'public', 'data', colName)
-                        : fb.collection(db, colName);
-
-                    const getDocRef = (colName, docId) => isCanvasEnv
-                        ? fb.doc(db, 'artifacts', appId, 'public', 'data', colName, String(docId))
-                        : fb.doc(db, colName, String(docId));
-
+                    const getCol = (colName) => fb.collection(db, colName);
+                    const getDocRef = (colName, docId) => fb.doc(db, colName, String(docId));
                     const refs = { getCol, getDocRef, db, auth, fb };
                     setDbRefs(refs);
-
-                    // Canvas 環境使用 Custom Token
-                    if (isCanvasEnv && typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    unsubscribeAuth = fb.onAuthStateChanged(auth, async (user) => {
+                        const version = ++authVersion;
+                        const isCurrent = () => !disposed && version === authVersion && auth.currentUser?.uid === user?.uid;
+                        clearSession();
                         try {
-                            await fb.signInWithCustomToken(auth, __initial_auth_token);
-                        } catch (e) {
-                            console.error("Auth Error:", e);
-                            setFirebaseReady('auth-error');
-                            return;
-                        }
-                    }
-
-                    // 監聽 Auth 狀態：處理頁面重整時的 session 恢復
-                    const ADMIN_EMAIL = 'ptaopenhour@ibsh.tw';
-                    fb.onAuthStateChanged(auth, async (user) => {
-                        if (user && user.email) {
-                            // 已有 Google session，自動恢復登入狀態
-                            if (user.email === ADMIN_EMAIL) {
-                                setIsAdmin(true);
-                                setCurrentUser({ name: 'System Admin', email: ADMIN_EMAIL, defaultClass: 'Admin', customClass: '' });
-                            } else {
-                                try {
-                                    const userDocRef = refs.getDocRef('users', user.email);
-                                    const userDoc = await refs.fb.getDoc(userDocRef);
-                                    if (userDoc.exists()) {
-                                        setCurrentUser(userDoc.data());
-                                        setIsAdmin(false);
-                                    } else {
-                                        // 白名單中沒有此帳號，登出
-                                        await fb.signOut(auth);
-                                    }
-                                } catch (e) {
-                                    console.error("Session restore error:", e);
-                                }
+                            if (!user) return;
+                            const { claims } = await user.getIdTokenResult();
+                            if (!isCurrent()) return;
+                            if (typeof claims.email !== 'string' || claims.email_verified !== true || claims.firebase?.sign_in_provider !== 'google.com') {
+                                throw new Error('Please sign in with a verified Google account.');
                             }
+                            if (claims.email === ADMIN_EMAIL) {
+                                setCurrentUser({ uid: user.uid, name: 'System Admin', email: claims.email, defaultClass: 'Admin', customClass: '' });
+                                setIsAdmin(true);
+                            } else {
+                                const userDoc = await fb.getDoc(refs.getDocRef('users', claims.email));
+                                if (!isCurrent()) return;
+                                if (!userDoc.exists() || userDoc.data().disabled === true) throw new Error('Your account is not on the active whitelist. Please contact the administrator.');
+                                // Identity comes from Auth, never from editable profile fields.
+                                setCurrentUser({ ...userDoc.data(), uid: user.uid, email: claims.email });
+                            }
+                        } catch (error) {
+                            if (!isCurrent()) return;
+                            clearSession();
+                            showAlert(error.message || 'Could not verify your account. Please sign in again.');
+                            try { await fb.signOut(auth); } catch (signOutError) { console.error('Sign out failed:', signOutError); }
+                        } finally {
+                            if (!disposed && version === authVersion) setFirebaseReady(true);
                         }
-                        // 不管有沒有 session，都設為 ready（讓登入畫面能顯示）
-                        setFirebaseReady(true);
                     });
                 };
 
                 if (window.fbModules) initFirebase();
                 else window.addEventListener('firebaseLoaded', initFirebase);
+                return () => {
+                    disposed = true;
+                    authVersion++;
+                    unsubscribeAuth?.();
+                    window.removeEventListener('firebaseLoaded', initFirebase);
+                };
             }, []);
 
             // 🔧 FIX [安全]: Cart & Settings 訂閱改為「登入後才啟動」
@@ -439,32 +434,31 @@
                     const newCarts = {};
                     snap.forEach(d => { newCarts[d.id] = d.data(); });
 
-                    if (snap.empty && !window.__seededCarts) {
-                        window.__seededCarts = true;
-                        Object.entries(initialData).forEach(([k, v]) => dbRefs.fb.setDoc(dbRefs.getDocRef('carts', k), v).catch(e => {}));
-                    } else {
-                        setCartData(newCarts);
-                    }
+                    setCartData(newCarts);
                     setCartsLoaded(true);
-                }, err => { console.error("Firestore Error:", err); setDataError('Equipment could not be loaded. Check your connection or account access.'); });
+                }, err => { console.error("Firestore Error:", err); setCartData({}); setCartsLoaded(false); setBookingModal({ isOpen: false }); setDataError('Equipment could not be loaded. Check your connection or account access.'); });
 
                 const unsubSettings = dbRefs.fb.onSnapshot(dbRefs.getDocRef('settings', 'main'), (snap) => {
                     if (snap.exists()) {
                         const data = snap.data();
-                        if (data.semesterConfig) {
+                        const config = data.semesterConfig;
+                        if (config && /^\d{4}-\d{2}-\d{2}$/.test(config.startDate) && Number.isInteger(config.totalWeeks) && config.totalWeeks > 0 && config.totalWeeks <= 60) {
                             setSemesterConfig({ ...data.semesterConfig, maxAdvanceWeeks: data.semesterConfig.maxAdvanceWeeks || 2 });
                             setTempSemesterConfig({ ...data.semesterConfig, maxAdvanceWeeks: data.semesterConfig.maxAdvanceWeeks || 2 });
+                        } else {
+                            setSemesterConfigLoaded(false);
+                            setDataError('Semester settings are missing or invalid. An administrator must review them.');
+                            return;
                         }
                         if (data.allowSaturday !== undefined) setAllowSaturday(data.allowSaturday);
                         setRecurringLocks(Array.isArray(data.recurringLocks) ? data.recurringLocks : []);
                     } else {
-                        dbRefs.fb.setDoc(dbRefs.getDocRef('settings', 'main'), {
-                            semesterConfig: { startDate: '2026-02-23', totalWeeks: 19, maxAdvanceWeeks: 2 },
-                            allowSaturday: false
-                        }).catch(e => {});
+                        setSemesterConfigLoaded(false);
+                        setDataError('Semester settings are missing. No default data has been written. Please contact the administrator.');
+                        return;
                     }
                     setSemesterConfigLoaded(true);
-                }, err => { console.error("Firestore Error:", err); setDataError('Semester settings could not be loaded. Please try again.'); });
+                }, err => { console.error("Firestore Error:", err); setSemesterConfigLoaded(false); setDataError('Semester settings could not be loaded. Please try again.'); });
 
                 return () => { unsubCarts(); unsubSettings(); };
             }, [firebaseReady, dbRefs, currentUser, isAdmin]);
@@ -477,13 +471,8 @@
                     const newUsers = {};
                     snap.forEach(d => { newUsers[d.id] = d.data(); });
 
-                    if (snap.empty && !window.__seededUsers) {
-                        window.__seededUsers = true;
-                        Object.entries(initialUsers).forEach(([k, v]) => dbRefs.fb.setDoc(dbRefs.getDocRef('users', k), v).catch(e => {}));
-                    } else {
-                        setUsersDB(newUsers);
-                    }
-                });
+                    setUsersDB(newUsers);
+                }, err => { console.error('Whitelist read failed:', err); setUsersDB({}); setDataError('The whitelist could not be loaded.'); });
 
                 return () => { unsubUsers(); };
             }, [dbRefs, isAdmin]);
@@ -605,6 +594,7 @@
             );
             
             const moveCart = async (cartName, direction) => {
+                if (!requireAdmin()) return;
                 const sortedNames = sortedAllCarts.map(arr => arr[0]);
                 const idx = sortedNames.indexOf(cartName);
                 if (direction === 'up' && idx > 0) [sortedNames[idx - 1], sortedNames[idx]] = [sortedNames[idx], sortedNames[idx - 1]];
@@ -635,9 +625,12 @@
             };
 
             const addLog = async (action, cart, details, specificUser = null) => {
+                if (!requireAdmin()) return;
                 const operator = isAdmin ? 'Admin' : (currentUser ? currentUser.name : 'Unknown');
                 const id = `${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
                 const newLog = { 
+                    actorUid: currentUser.uid,
+                    actorEmail: currentUser.email,
                     time: getTimestamp(), 
                     operator: specificUser || operator, 
                     action, 
@@ -758,6 +751,7 @@
             });
 
             const handleSaturdayToggle = async (e) => {
+                if (!requireAdmin()) return;
                 const newVal = e.target.checked;
                 setAllowSaturday(newVal); 
                 if (dbRefs) {
@@ -766,53 +760,12 @@
                 }
             };
 
-            // 🔧 FIX [安全]: Google 登入流程
-            // signInWithPopup 成功後，onAuthStateChanged 會自動觸發 session 恢復。
-            // 這裡只需要處理 Canvas 環境模擬登入和登入失敗的情況。
+            // onAuthStateChanged is the single session validation path.
             const handleGoogleLogin = async () => {
-                const ADMIN_EMAIL = 'ptaopenhour@ibsh.tw';
-
-                if (isCanvasEnv) {
-                    const testEmail = prompt(`【預覽環境模擬登入】\n\n請輸入你想模擬驗證的信箱:\n(最高權限管理員請輸入 ${ADMIN_EMAIL})`, ADMIN_EMAIL);
-                    if (!testEmail) return;
-
-                    if (testEmail.trim() === ADMIN_EMAIL) {
-                        setIsAdmin(true);
-                        setCurrentUser({ name: 'System Admin', email: ADMIN_EMAIL, defaultClass: 'Admin', customClass: '' });
-                        goHome();
-                        return;
-                    }
-
-                    const userDocRef = dbRefs.getDocRef('users', testEmail.trim());
-                    const userDoc = await dbRefs.fb.getDoc(userDocRef);
-                    if (userDoc.exists()) {
-                        setCurrentUser(userDoc.data());
-                        setIsAdmin(false);
-                        goHome();
-                    } else {
-                        showAlert(`Access Denied.\nYour account (${testEmail}) is not in the allowed whitelist.`);
-                    }
-                    return;
-                }
-
+                if (!dbRefs) return;
                 try {
                     const provider = new dbRefs.fb.GoogleAuthProvider();
-                    const result = await dbRefs.fb.signInWithPopup(dbRefs.auth, provider);
-                    const userEmail = result.user.email;
-
-                    // onAuthStateChanged 會自動處理 session 恢復，
-                    // 但如果白名單中沒有此帳號，需要立即登出並顯示錯誤。
-                    if (userEmail !== ADMIN_EMAIL) {
-                        const userDocRef = dbRefs.getDocRef('users', userEmail);
-                        const userDoc = await dbRefs.fb.getDoc(userDocRef);
-                        if (!userDoc.exists()) {
-                            await dbRefs.fb.signOut(dbRefs.auth);
-                            setCurrentUser(null);
-                            setIsAdmin(false);
-                            showAlert(`Access Denied.\nYour email (${userEmail}) is not registered in the whitelist.\nPlease contact the administrator.`);
-                        }
-                    }
-                    // 如果驗證通過，onAuthStateChanged 已經設好 currentUser & isAdmin
+                    await dbRefs.fb.signInWithPopup(dbRefs.auth, provider);
                 } catch (error) {
                     console.error(error);
                     if (error.code !== 'auth/popup-closed-by-user') {
@@ -823,6 +776,7 @@
 
             const handleAdminAddUser = async (e) => {
                 e.preventDefault();
+                if (!requireAdmin()) return;
                 const email = addUserForm.email.trim();
                 try {
                     const existingDoc = await dbRefs.fb.getDoc(dbRefs.getDocRef('users', email));
@@ -848,13 +802,16 @@
 
             const handleSemesterConfigSave = async (e) => {
                 e.preventDefault();
+                if (!requireAdmin()) return;
                 await dbRefs.fb.setDoc(dbRefs.getDocRef('settings', 'main'), { semesterConfig: tempSemesterConfig }, { merge: true });
                 addLog("Update Config", "System", `Start Date: ${tempSemesterConfig.startDate}, Total Weeks: ${tempSemesterConfig.totalWeeks}, Advance: ${tempSemesterConfig.maxAdvanceWeeks}W`);
                 showAlert("Semester configuration updated successfully!");
             };
 
             const handleClearSemesterData = () => {
+                if (!requireAdmin()) return;
                 showConfirm("⚠️ WARNING: Are you sure you want to clear ALL booking records?\n\nThis action cannot be undone!", async () => {
+                    if (!requireAdmin()) return;
                     try {
                         const batch = dbRefs.fb.writeBatch(dbRefs.db);
                         for (const cartName of Object.keys(cartData)) {
@@ -885,6 +842,7 @@
 
             const saveLock = async (e) => {
                 e.preventDefault();
+                if (!requireAdmin()) return;
                 const formData = new FormData(e.target);
                 const lockData = {
                     id: lockModal.lockId || `lock_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
@@ -928,9 +886,11 @@
             };
 
             const deleteLock = (lockId) => {
+                if (!requireAdmin()) return;
                 const lock = recurringLocks.find(l => l.id === lockId);
                 if (!lock) return;
                 showConfirm(`確定要刪除鎖定「${lock.name}」嗎？`, async () => {
+                    if (!requireAdmin()) return;
                     try {
                         const newLocks = recurringLocks.filter(l => l.id !== lockId);
                         await dbRefs.fb.setDoc(dbRefs.getDocRef('settings', 'main'), { recurringLocks: newLocks }, { merge: true });
@@ -943,7 +903,9 @@
             };
 
             const deleteUser = (email) => {
+                if (!requireAdmin()) return;
                 showConfirm(`Delete user ${usersDB[email].name} from whitelist?\nThey will no longer be able to log in.`, async () => {
+                    if (!requireAdmin()) return;
                     await dbRefs.fb.deleteDoc(dbRefs.getDocRef('users', email));
                     addLog("Delete User", "System", `Admin removed account from whitelist: ${email}`);
                 });
@@ -963,7 +925,7 @@
                 const isPastSlot = isSlotBeforeToday(selectedWeek, dayIdx);
 
                 const isPastLimit = !isAdmin && (selectedWeek > currentRealWeek + (semesterConfig.maxAdvanceWeeks || 2));
-                if (isPastLimit) {
+                if (isPastLimit && !existingBooking) {
                     showAlert(`⚠️ Booking Limit Exceeded\n\nTo ensure fairness, the system only allows bookings up to ${semesterConfig.maxAdvanceWeeks || 2} week(s) in advance.\nPlease try again closer to your desired date!`);
                     return;
                 }
@@ -971,6 +933,7 @@
                 if (existingBooking) {
                     setBookingModal({ isOpen: true, dayIdx, periodId, existingBooking, isEditing: false, isBatch: false, isPast: isPastSlot });
                 } else {
+                    if (!requireReservationWrite()) return;
                     if (isPastSlot && !isAdmin) {
                         showAlert("⚠️ Cannot book slots in the past!");
                         return;
@@ -1002,7 +965,7 @@
                 const remaining = getSlotRemainingQuantity(selectedCart, slotId);
                 const isPast = isSlotBeforeToday(selectedWeek, dayIdx);
                 const beyondLimit = !isAdmin && selectedWeek > currentRealWeek + (semesterConfig.maxAdvanceWeeks || 2);
-                const canBook = remaining > 0 && (!isPast || isAdmin) && !beyondLimit && !isSaving;
+                const canBook = canWriteReservations && semesterConfigLoaded && cartsLoaded && !dataError && remaining > 0 && (!isPast || isAdmin) && !beyondLimit && !isSaving;
                 const selected = batchSelection.some(slot => slot.slotId === slotId) ||
                     (bookingModal.isOpen && !bookingModal.isBatch && bookingModal.dayIdx === dayIdx && bookingModal.periodId === period.id);
                 const label = `${selectedCart}, ${currentDays[dayIdx]} ${getDateForDayIdx(selectedWeek, dayIdx)}, Period ${period.id}`;
@@ -1043,6 +1006,7 @@
             };
 
             const executeBookingTransaction = async (slotsToBook, bookingName, finalSubject, requestedQuantity) => {
+                if (!requireReservationWrite()) return;
                 if (bookingBusy.current || slotsToBook.length === 0) return;
                 bookingBusy.current = true;
                 setIsSaving(true);
@@ -1101,6 +1065,7 @@
             };
 
             const checkConflictsAndSubmit = async () => {
+                if (!requireReservationWrite()) return;
                 if (bookingBusy.current) return;
                 const bookingName = bookForm.name.trim();
                 const finalSubject = bookForm.subject.trim();
@@ -1146,6 +1111,7 @@
             // 已被取消時給予明確的錯誤訊息而不是靜默失敗。
             // =================================================================
             const cancelBooking = async () => {
+                if (!requireReservationWrite()) return;
                 if (bookingBusy.current) return;
                 bookingBusy.current = true;
                 setIsSaving(true);
@@ -1192,6 +1158,7 @@
             };
 
             const handleEditClick = () => {
+                if (!requireReservationWrite()) return;
                 const existing = bookingModal.existingBooking;
                 setEditBookForm({
                     name: existing.name, email: existing.email,
@@ -1202,6 +1169,7 @@
             };
 
             const updateBooking = async () => {
+                if (!requireReservationWrite()) return;
                 if (bookingBusy.current) return;
                 const slotId = `w${selectedWeek}_d${bookingModal.dayIdx}_p${bookingModal.periodId}`;
                 const finalSubject = editBookForm.subject.trim();
@@ -1276,58 +1244,58 @@
 
             const saveCartEdit = async (e) => {
                 e.preventDefault();
+                if (!requireAdmin()) return;
                 const formData = new FormData(e.target);
                 const oldName = editCartModal.cartName;
                 const newName = formData.get('name').trim();
+                const capacity = Number(formData.get('capacity'));
+                if (!newName || newName.includes('/') || !Number.isSafeInteger(capacity) || capacity < 1) {
+                    showAlert('Enter a valid equipment name and a positive whole-number capacity.');
+                    return;
+                }
 
                 try {
-                    if (oldName && oldName === newName) {
-                        await dbRefs.fb.updateDoc(dbRefs.getDocRef('carts', newName), {
-                            type: formData.get('type'), 
-                            location: formData.get('location'), 
-                            capacity: parseInt(formData.get('capacity')), 
-                            notes: formData.get('notes')
+                    await dbRefs.fb.runTransaction(dbRefs.db, async (transaction) => {
+                        const targetRef = dbRefs.getDocRef('carts', newName);
+                        const target = await transaction.get(targetRef);
+                        if (oldName !== newName && target.exists()) throw 'CART_NAME_EXISTS';
+                        const sourceRef = oldName ? dbRefs.getDocRef('carts', oldName) : null;
+                        const source = oldName === newName ? target : sourceRef ? await transaction.get(sourceRef) : null;
+                        if (oldName && !source.exists()) throw 'CART_NOT_FOUND';
+                        const latestData = source?.data() || { schedule: {}, order: Object.keys(cartData).length };
+                        const reserved = Math.max(0, ...Object.values(latestData.schedule || {}).map(getSlotUsedQuantity));
+                        if (capacity < reserved) throw 'CAPACITY_BELOW_BOOKED';
+                        const renaming = oldName && oldName !== newName;
+                        const settingsRef = dbRefs.getDocRef('settings', 'main');
+                        const settings = renaming ? await transaction.get(settingsRef) : null;
+                        transaction.set(targetRef, {
+                            ...latestData, type: formData.get('type'), location: formData.get('location'),
+                            capacity, notes: formData.get('notes')
                         });
-                    } else if (oldName && oldName !== newName) {
-                        await dbRefs.fb.runTransaction(dbRefs.db, async (transaction) => {
-                            const oldDocRef = dbRefs.getDocRef('carts', oldName);
-                            const newDocRef = dbRefs.getDocRef('carts', newName);
-                            const oldDoc = await transaction.get(oldDocRef);
-                            
-                            if (!oldDoc.exists()) throw "CART_NOT_FOUND";
-                            
-                            const latestData = oldDoc.data();
-                            const newData = {
-                                ...latestData,
-                                type: formData.get('type'), 
-                                location: formData.get('location'), 
-                                capacity: parseInt(formData.get('capacity')), 
-                                notes: formData.get('notes')
-                            };
-                            
-                            transaction.set(newDocRef, newData);
-                            transaction.delete(oldDocRef);
-                        });
-                    } else {
-                        const newData = {
-                            type: formData.get('type'), location: formData.get('location'), capacity: parseInt(formData.get('capacity')), notes: formData.get('notes'),
-                            schedule: {},
-                            order: Object.keys(cartData).length
-                        };
-                        await dbRefs.fb.setDoc(dbRefs.getDocRef('carts', newName), newData);
-                    }
+                        if (renaming) {
+                            transaction.delete(sourceRef);
+                            const locks = settings?.data()?.recurringLocks;
+                            if (Array.isArray(locks) && locks.some(lock => lock.cartName === oldName)) {
+                                transaction.update(settingsRef, { recurringLocks: locks.map(lock => lock.cartName === oldName ? { ...lock, cartName: newName } : lock) });
+                            }
+                        }
+                    });
                     
                     addLog(oldName ? "Edit Equipment" : "Add Equipment", "System", `Equipment: ${newName}`);
                     setEditCartModal({ isOpen: false, cartName: null, data: null });
                 } catch (err) {
                     console.error("Save cart error:", err);
                     if (err === "CART_NOT_FOUND") showAlert("The cart you are trying to edit was not found or was deleted.");
+                    else if (err === 'CART_NAME_EXISTS') showAlert('That equipment name already exists. No data was overwritten.');
+                    else if (err === 'CAPACITY_BELOW_BOOKED') showAlert('Capacity cannot be lower than the number of devices already reserved in a slot.');
                     else showAlert("Failed to save equipment. Please try again.");
                 }
             };
 
             const deleteCart = (name) => {
+                if (!requireAdmin()) return;
                 showConfirm(`Delete "${name}"?\nThis clears all its bookings.`, async () => {
+                    if (!requireAdmin()) return;
                     await dbRefs.fb.deleteDoc(dbRefs.getDocRef('carts', name));
                     addLog("Delete Equipment", "System", `Equipment: ${name}`);
                     if (selectedCart === name) setSelectedCart(null);
@@ -1376,7 +1344,9 @@
 
             // 🔧 FIX [衝突]: cancelBookingFromList 也改用 runTransaction
             const cancelBookingFromList = (cartName, slotId, className, bookingId) => {
+                if (!requireReservationWrite()) return;
                 showConfirm(`Are you sure you want to cancel this booking for ${cartName}?`, async () => {
+                    if (!requireReservationWrite()) return;
                     const cartRef = dbRefs.getDocRef('carts', cartName);
                     
                     try {
@@ -1566,13 +1536,14 @@
                                     {weeksArray.map(week => <option key={week} value={week}>Week {week}</option>)}
                                 </select>
                                 <button className="ui-button this-week" disabled={isSaving || !semesterConfigLoaded} onClick={() => selectWeek(currentRealWeek)}>This week</button>
-                                {currentView === 'schedule' && <label className="toggle-label"><input type="checkbox" checked={isBatchMode} disabled={isSaving} onChange={event => { closeBooking(); setIsBatchMode(event.target.checked); setBatchSelection([]); }} />Batch booking</label>}
+                                {currentView === 'schedule' && canWriteReservations && <label className="toggle-label"><input type="checkbox" checked={isBatchMode} disabled={isSaving} onChange={event => { closeBooking(); setIsBatchMode(event.target.checked); setBatchSelection([]); }} />Batch booking</label>}
                             </div>
                             {currentView === 'schedule' && <div className="legend" aria-label="Booking status legend">
                                 <span><i />Available</span><span><i aria-hidden="true" className="mine" />My booking</span><span><i aria-hidden="true" className="booked" />Booked</span><span><i aria-hidden="true" className="locked" />Locked</span>
                             </div>}
                         </div>
                         {dataError && <div className="status-banner error" role="alert"><Icon name="circle-exclamation" /><span>{dataError}</span><button className="ui-button" onClick={() => window.location.reload()}>Retry</button></div>}
+                        {RESERVATIONS_PAUSED && <div className="status-banner" role="status"><Icon name="lock" /><span>{isAdmin ? 'Incident protection: teacher reservations are paused. Preserve a backup before repairing data.' : 'Reservations are temporarily read-only. Booking changes are paused.'}</span></div>}
                         {!isAdmin && selectedWeek > currentRealWeek + (semesterConfig.maxAdvanceWeeks || 2) && <div className="status-banner"><Icon name="lock" /><span>Booking opens up to {semesterConfig.maxAdvanceWeeks || 2} weeks in advance.</span></div>}
                         <main className={currentView === 'schedule' ? 'schedule-view' : currentView === 'print' ? 'print-workspace' : 'legacy-view'}>
                         
@@ -1598,7 +1569,7 @@
                                             <span className="booking-list-quantity">{booking.quantity} devices</span>
                                             <div className="booking-list-actions">
                                                 <IconButton label={`View reservation for ${booking.cartName}`} name="arrow-up-right-from-square" onClick={() => openMyBooking(booking)} />
-                                                {(isAdmin || !isSlotBeforeToday(booking.week, booking.dayIdx)) && <IconButton label={`Cancel reservation for ${booking.cartName}`} name="trash-can" onClick={() => cancelBookingFromList(booking.cartName, booking.slotId, booking.className, booking.bookingId)} />}
+                                                {canWriteReservations && (isAdmin || !isSlotBeforeToday(booking.week, booking.dayIdx)) && <IconButton label={`Cancel reservation for ${booking.cartName}`} name="trash-can" onClick={() => cancelBookingFromList(booking.cartName, booking.slotId, booking.className, booking.bookingId)} />}
                                             </div>
                                         </article>)}
                                     </div>
@@ -1988,7 +1959,7 @@
                                     </div>
                                     <footer key={bookingModal.isEditing ? 'edit-actions' : bookingModal.existingBooking ? 'detail-actions' : 'new-actions'} className="panel-footer">
                                         {bookingModal.existingBooking && !bookingModal.isEditing ? (
-                                            (isAdmin || bookingModal.existingBooking.ownerEmail === currentUser?.email) && (!bookingModal.isPast || isAdmin) ? (
+                                            canWriteReservations && (isAdmin || bookingModal.existingBooking.ownerEmail === currentUser?.email) && (!bookingModal.isPast || isAdmin) ? (
                                                 <>
                                                     <button type="button" className="ui-button danger" disabled={isSaving} onClick={() => showConfirm('Cancel this reservation? The devices will become available to other teachers.', cancelBooking)}>Cancel reservation</button>
                                                     <button type="button" className="ui-button" disabled={isSaving} onClick={handleEditClick}><Icon name="pen" />Edit</button>
@@ -1997,7 +1968,7 @@
                                         ) : (
                                             <>
                                                 <button type="button" className="ui-button" disabled={isSaving} onClick={() => bookingModal.isEditing ? setBookingModal(previous => ({...previous, isEditing: false})) : closeBooking()}>Cancel</button>
-                                                <button type="submit" className="ui-button primary" disabled={isSaving || bookingModalAvailableQuantity < 1}>
+                                                <button type="submit" className="ui-button primary" disabled={!canWriteReservations || isSaving || bookingModalAvailableQuantity < 1}>
                                                     <i aria-hidden="true" className={`fa-solid ${isSaving ? 'fa-spinner fa-spin' : 'fa-check'}`} />
                                                     <span>{isSaving ? 'Saving...' : bookingModal.isEditing ? 'Save changes' : 'Confirm booking'}</span>
                                                 </button>
