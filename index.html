@@ -39,6 +39,7 @@
     <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
     <script src="https://unpkg.com/@babel/standalone@7.24.7/babel.min.js"></script>
+    <script src="./reservation-core.js"></script>
 
     <style>
         .hide-scrollbar::-webkit-scrollbar { display: none; }
@@ -52,11 +53,11 @@
     <script type="module">
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js';
         import { getAuth, onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signOut } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js';
-        import { getFirestore, collection, doc, getDoc, setDoc, deleteDoc, onSnapshot, runTransaction, query, orderBy, limit, serverTimestamp, updateDoc, deleteField, writeBatch } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
+        import { getFirestore, collection, doc, getDoc, getDocFromServer, getDocsFromServer, setDoc, deleteDoc, onSnapshot, runTransaction, query, orderBy, limit, serverTimestamp, updateDoc, deleteField, writeBatch } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
 
         window.fbModules = {
             initializeApp, getAuth, onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signOut,
-            getFirestore, collection, doc, getDoc, setDoc, deleteDoc, onSnapshot, runTransaction, query, orderBy, limit, serverTimestamp, updateDoc, deleteField, writeBatch
+            getFirestore, collection, doc, getDoc, getDocFromServer, getDocsFromServer, setDoc, deleteDoc, onSnapshot, runTransaction, query, orderBy, limit, serverTimestamp, updateDoc, deleteField, writeBatch
         };
         window.dispatchEvent(new Event('firebaseLoaded'));
     </script>
@@ -190,8 +191,7 @@
         };
 
         const ADMIN_EMAIL = 'ptaopenhour@ibsh.tw';
-        // This is a temporary containment build. Firestore Rules enforce the restriction.
-        const RESERVATIONS_PAUSED = true;
+        const Core = window.ReservationCore;
 
         const periods = [
             { id: 1, time: "8:10-9:00", name: "Period 1" }, { id: 2, time: "9:10-10:00", name: "Period 2" },
@@ -224,7 +224,7 @@
             const [selectedCart, setSelectedCart] = useState(null);
             const [adminTab, setAdminTab] = useState('carts');
             const [sidebarOpen, setSidebarOpen] = useState(false);
-            const [mobileDay, setMobileDay] = useState(Math.min(4, Math.max(0, new Date().getDay() - 1)));
+            const [mobileDay, setMobileDay] = useState(() => Math.min(4, Math.max(0, new Date(Date.now() + Core.OFFSET).getUTCDay() - 1)));
             const [compactViewport, setCompactViewport] = useState(window.innerWidth < 1280);
             const [mobileViewport, setMobileViewport] = useState(window.innerWidth < 768);
             const sidebarRef = useRef(null);
@@ -249,7 +249,11 @@
             
             const [currentUser, setCurrentUser] = useState(null);
             const [isAdmin, setIsAdmin] = useState(false);
-            const canWriteReservations = !!currentUser && (isAdmin || !RESERVATIONS_PAUSED);
+            const [securitySettings, setSecuritySettings] = useState(null);
+            const [now, setNow] = useState(Date.now());
+            const previousRealWeek = useRef(1);
+            const securityReady = securitySettings?.securityVersion === 2 && Object.values(cartData).every(cart => cart.securityVersion === 2);
+            const canWriteReservations = !!currentUser && securityReady && securitySettings?.reservationsEnabled === true && cartsLoaded && semesterConfigLoaded && !dataError;
             const requireAdmin = () => !!(isAdmin && currentUser && dbRefs?.auth.currentUser?.uid === currentUser.uid);
             const requireReservationWrite = () => {
                 if (!canWriteReservations || dbRefs?.auth.currentUser?.uid !== currentUser?.uid) {
@@ -365,7 +369,7 @@
                 const clearSession = () => {
                     setCurrentUser(null); setIsAdmin(false); setCartData({}); setUsersDB({}); setActivityLogs([]);
                     setCartsLoaded(false); setSemesterConfigLoaded(false); setDataError('');
-                    setSelectedCart(null); setRecurringLocks([]); setAllowSaturday(false);
+                    setSelectedCart(null); setRecurringLocks([]); setAllowSaturday(false); setSecuritySettings(null);
                     setBookingModal({ isOpen: false }); setBatchSelection([]); setIsBatchMode(false);
                     setEditCartModal({ isOpen: false }); setLockModal({ isOpen: false });
                     setAdminAddUserModal({ isOpen: false }); setConfirmModal({ isOpen: false });
@@ -441,10 +445,13 @@
                 const unsubSettings = dbRefs.fb.onSnapshot(dbRefs.getDocRef('settings', 'main'), (snap) => {
                     if (snap.exists()) {
                         const data = snap.data();
+                        setSecuritySettings(data);
                         const config = data.semesterConfig;
                         if (config && /^\d{4}-\d{2}-\d{2}$/.test(config.startDate) && Number.isInteger(config.totalWeeks) && config.totalWeeks > 0 && config.totalWeeks <= 60) {
-                            setSemesterConfig({ ...data.semesterConfig, maxAdvanceWeeks: data.semesterConfig.maxAdvanceWeeks || 2 });
-                            setTempSemesterConfig({ ...data.semesterConfig, maxAdvanceWeeks: data.semesterConfig.maxAdvanceWeeks || 2 });
+                            try { Core.semesterStart({ ...config, maxAdvanceWeeks: config.maxAdvanceWeeks ?? 2 }); }
+                            catch (error) { setDataError(error.message); setSemesterConfigLoaded(false); return; }
+                            setSemesterConfig({ ...config, maxAdvanceWeeks: config.maxAdvanceWeeks ?? 2 });
+                            setTempSemesterConfig({ ...config, maxAdvanceWeeks: config.maxAdvanceWeeks ?? 2 });
                         } else {
                             setSemesterConfigLoaded(false);
                             setDataError('Semester settings are missing or invalid. An administrator must review them.');
@@ -453,7 +460,7 @@
                         if (data.allowSaturday !== undefined) setAllowSaturday(data.allowSaturday);
                         setRecurringLocks(Array.isArray(data.recurringLocks) ? data.recurringLocks : []);
                     } else {
-                        setSemesterConfigLoaded(false);
+                        setSecuritySettings(null); setSemesterConfigLoaded(false);
                         setDataError('Semester settings are missing. No default data has been written. Please contact the administrator.');
                         return;
                     }
@@ -513,43 +520,32 @@
             };
 
             const getTodayDate = () => {
-                const today = new Date();
-                today.setHours(0, 0, 0, 0);
-                return today;
+                const taipei = new Date(now + Core.OFFSET);
+                return new Date(taipei.getUTCFullYear(), taipei.getUTCMonth(), taipei.getUTCDate());
             };
-
             const getSlotDate = (weekNum, dayIdx) => {
-                const start = parseLocalDate(semesterConfig.startDate);
-                if (!start) return null;
-
-                const slotDate = new Date(start);
-                slotDate.setDate(slotDate.getDate() + (Number(weekNum) - 1) * 7 + Number(dayIdx));
-                return slotDate;
+                const value = new Date(Core.slotTime(semesterConfig, Number(weekNum), Number(dayIdx)) + Core.OFFSET);
+                return new Date(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate());
             };
-
-            const isSlotBeforeToday = (weekNum, dayIdx) => {
-                const slotDate = getSlotDate(weekNum, dayIdx);
-                if (!slotDate) return false;
-                return slotDate < getTodayDate();
+            const isSlotBeforeToday = (weekNum, dayIdx, periodId) => {
+                if (periodId && periodId !== 'lunch') return now >= Core.slotTime(semesterConfig, Number(weekNum), Number(dayIdx), Number(periodId));
+                return getSlotDate(weekNum, dayIdx) < getTodayDate();
             };
-
+            useEffect(() => {
+                const tick = () => setNow(Date.now());
+                const timer = setInterval(tick, 30000);
+                window.addEventListener('focus', tick);
+                document.addEventListener('visibilitychange', tick);
+                return () => { clearInterval(timer); window.removeEventListener('focus', tick); document.removeEventListener('visibilitychange', tick); };
+            }, []);
             useEffect(() => {
                 if (!semesterConfigLoaded) return;
-
-                const now = getTodayDate();
-                const start = parseLocalDate(semesterConfig.startDate);
-                if (!start) return;
-                
-                const diffTime = now.getTime() - start.getTime();
-                const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-                let currentWeekCalc = Math.floor(diffDays / 7) + 1;
-                
-                if (currentWeekCalc < 1) currentWeekCalc = 1;
-                if (currentWeekCalc > semesterConfig.totalWeeks) currentWeekCalc = semesterConfig.totalWeeks;
-                
-                setCurrentRealWeek(currentWeekCalc);
-                setSelectedWeek(currentWeekCalc);
-            }, [semesterConfigLoaded, semesterConfig.startDate, semesterConfig.totalWeeks]);
+                const week = Core.currentWeek(semesterConfig, now);
+                const previous = previousRealWeek.current;
+                setCurrentRealWeek(week);
+                setSelectedWeek(selected => selected === previous ? week : Math.min(selected, semesterConfig.totalWeeks));
+                previousRealWeek.current = week;
+            }, [semesterConfigLoaded, semesterConfig.startDate, semesterConfig.totalWeeks, now]);
 
             useEffect(() => {
                 if (selectedWeek > semesterConfig.totalWeeks) setSelectedWeek(semesterConfig.totalWeeks);
@@ -680,25 +676,9 @@
                 return getSafeQuantity(data?.capacity, 1);
             };
 
-            const normalizeSlotBookings = (slotValue) => {
-                if (!slotValue) return [];
-
-                if (Array.isArray(slotValue.bookings)) {
-                    return slotValue.bookings
-                        .filter(Boolean)
-                        .map((booking, index) => ({
-                            ...booking,
-                            id: booking.id || `legacy_${index}`,
-                            quantity: getBookingQuantity(booking)
-                        }));
-                }
-
-                return [{
-                    ...slotValue,
-                    id: slotValue.id || 'legacy',
-                    quantity: getBookingQuantity(slotValue)
-                }];
-            };
+            const normalizeSlotBookings = slotValue => Core.bookings(slotValue).map((booking, index) => ({
+                ...booking, id: booking.id || 'legacy_' + index, quantity: getBookingQuantity(booking)
+            }));
 
             const getSlotUsedQuantity = (slotValue) =>
                 normalizeSlotBookings(slotValue).reduce((total, booking) => total + getBookingQuantity(booking), 0);
@@ -712,23 +692,7 @@
             const makeBookingId = () => `booking_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
             const setSlotBookings = (schedule, slotId, bookings) => {
-                const cleanedBookings = bookings
-                    .filter(Boolean)
-                    .map((booking) => ({
-                        id: booking.id || makeBookingId(),
-                        name: booking.name || '',
-                        email: booking.email || booking.ownerEmail || '',
-                        className: booking.className || '',
-                        ownerEmail: booking.ownerEmail || booking.email || '',
-                        quantity: getBookingQuantity(booking),
-                        createdAt: booking.createdAt || getTimestamp()
-                    }));
-
-                if (cleanedBookings.length === 0) {
-                    delete schedule[slotId];
-                } else {
-                    schedule[slotId] = { bookings: cleanedBookings };
-                }
+                schedule[slotId] = Core.secureSlot({ bookings });
             };
 
             const findBookingIndex = (bookings, bookingId) => {
@@ -752,12 +716,22 @@
 
             const handleSaturdayToggle = async (e) => {
                 if (!requireAdmin()) return;
-                const newVal = e.target.checked;
-                setAllowSaturday(newVal); 
-                if (dbRefs) {
-                    await dbRefs.fb.setDoc(dbRefs.getDocRef('settings', 'main'), { allowSaturday: newVal }, { merge: true });
-                    addLog(newVal ? "Enable Saturday" : "Disable Saturday", "System", "Admin toggled Saturday booking setting");
-                }
+                const allowSaturday = e.target.checked;
+                try {
+                    await dbRefs.fb.updateDoc(dbRefs.getDocRef('settings', 'main'), { allowSaturday });
+                    addLog(allowSaturday ? 'Enable Saturday' : 'Disable Saturday', 'System', 'Saturday setting changed');
+                } catch (error) { showAlert('Could not save the Saturday setting.'); }
+            };
+
+            const handleReservationsToggle = async (e) => {
+                if (!requireAdmin() || !securityReady || isSaving) return;
+                const enabled = e.target.checked;
+                setIsSaving(true);
+                try {
+                    await dbRefs.fb.updateDoc(dbRefs.getDocRef('settings', 'main'), { reservationsEnabled: enabled });
+                    addLog(enabled ? 'Resume Reservations' : 'Pause Reservations', 'System', 'Reservation availability changed');
+                } catch (error) { showAlert('Could not change reservation availability.'); }
+                finally { setIsSaving(false); }
             };
 
             // onAuthStateChanged is the single session validation path.
@@ -802,10 +776,59 @@
 
             const handleSemesterConfigSave = async (e) => {
                 e.preventDefault();
-                if (!requireAdmin()) return;
-                await dbRefs.fb.setDoc(dbRefs.getDocRef('settings', 'main'), { semesterConfig: tempSemesterConfig }, { merge: true });
-                addLog("Update Config", "System", `Start Date: ${tempSemesterConfig.startDate}, Total Weeks: ${tempSemesterConfig.totalWeeks}, Advance: ${tempSemesterConfig.maxAdvanceWeeks}W`);
-                showAlert("Semester configuration updated successfully!");
+                if (!requireAdmin() || bookingBusy.current) return;
+                try {
+                    const semesterStartMs = Core.semesterStart(tempSemesterConfig);
+                    const carts = await dbRefs.fb.getDocsFromServer(dbRefs.getCol('carts'));
+                    await dbRefs.fb.runTransaction(dbRefs.db, async transaction => {
+                        const ref = dbRefs.getDocRef('settings', 'main');
+                        const settings = await transaction.get(ref);
+                        if (!settings.exists()) throw new Error('Settings are missing.');
+                        const snapshots = [];
+                        for (const cart of carts.docs) snapshots.push(await transaction.get(dbRefs.getDocRef('carts', cart.id)));
+                        for (const cart of snapshots) {
+                            for (const [slot, value] of Object.entries(cart.data()?.schedule || {})) {
+                                if (!Core.bookings(value).length) continue;
+                                if (settings.data().semesterConfig.startDate !== tempSemesterConfig.startDate || Core.slotParts(slot).week > tempSemesterConfig.totalWeeks) throw new Error('Existing reservations would change date or fall outside the semester. Archive and clear them before changing these dates.');
+                            }
+                        }
+                        transaction.update(ref, { semesterConfig: tempSemesterConfig, semesterStartMs, lockedSlots: Core.lockIndex(settings.data().recurringLocks || [], tempSemesterConfig.totalWeeks) });
+                    });
+                    addLog('Update Config', 'System', 'Semester configuration updated');
+                    setToast('Semester configuration updated.');
+                } catch (error) { showAlert(error.message || 'Could not save semester settings.'); }
+            };
+
+            const upgradeSecurity = () => {
+                if (!requireAdmin() || bookingBusy.current) return;
+                showConfirm('Publish the new Firestore Rules first. Have you reviewed the current data? This will download a backup, upgrade the reservation format and reopen bookings without deleting reservations.', async () => {
+                    if (!requireAdmin() || bookingBusy.current) return;
+                    bookingBusy.current = true; setIsSaving(true);
+                    try {
+                        const { fb, db, getDocRef, getCol } = dbRefs;
+                        const carts = await fb.getDocsFromServer(getCol('carts'));
+                        const settings = await fb.getDocFromServer(getDocRef('settings', 'main'));
+                        if (!settings.exists() || carts.size > 40) throw new Error('Missing settings or too many carts for a single safe upgrade.');
+                        const backup = { savedAt: new Date().toISOString(), settings: settings.data(), carts: Object.fromEntries(carts.docs.map(cart => [cart.id, cart.data()])) };
+                        const url = URL.createObjectURL(new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' }));
+                        const link = document.createElement('a'); link.href = url;
+                        link.download = 'reservation-backup-' + new Date().toISOString().replace(/[:.]/g, '-') + '.json';
+                        link.click(); setTimeout(() => URL.revokeObjectURL(url), 60000);
+                        const nextSettings = Core.upgradeSettings(backup.settings);
+                        const nextCarts = Object.fromEntries(Object.entries(backup.carts).map(([name, cart]) => [name, Core.upgradeCart(cart)]));
+                        await fb.runTransaction(db, async transaction => {
+                            const liveSettings = await transaction.get(getDocRef('settings', 'main'));
+                            const liveCarts = [];
+                            for (const name of Object.keys(backup.carts)) liveCarts.push([name, await transaction.get(getDocRef('carts', name))]);
+                            if (!liveSettings.exists() || Core.stable(liveSettings.data()) !== Core.stable(backup.settings) || liveCarts.some(([name, doc]) => !doc.exists() || Core.stable(doc.data()) !== Core.stable(backup.carts[name]))) throw new Error('Data changed after the backup. Nothing was upgraded. Try again.');
+                            for (const [name] of liveCarts) transaction.set(getDocRef('carts', name), nextCarts[name]);
+                            transaction.set(getDocRef('settings', 'main'), nextSettings);
+                        });
+                        setDataError(''); setToast('Security upgrade complete. Bookings are open.');
+                        addLog('Security Upgrade', 'System', 'Version 2 reservation validation enabled after backup');
+                    } catch (error) { showAlert(error.message || 'Upgrade failed. No partial upgrade was applied.'); }
+                    finally { bookingBusy.current = false; setIsSaving(false); }
+                });
             };
 
             const handleClearSemesterData = () => {
@@ -842,63 +865,45 @@
 
             const saveLock = async (e) => {
                 e.preventDefault();
-                if (!requireAdmin()) return;
-                const formData = new FormData(e.target);
-                const lockData = {
-                    id: lockModal.lockId || `lock_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-                    name: formData.get('name').trim() || 'Locked',
-                    cartName: formData.get('cartName'),
-                    dayIdx: Number(formData.get('dayIdx')),
-                    periodId: formData.get('periodId'),
-                    startWeek: Number(formData.get('startWeek')),
-                    weeks: Number(formData.get('weeks'))
+                if (!requireAdmin() || bookingBusy.current) return;
+                const values = new FormData(e.target);
+                const lock = {
+                    id: lockModal.lockId || crypto.randomUUID(), name: values.get('name').trim() || 'Locked',
+                    cartName: values.get('cartName'), dayIdx: Number(values.get('dayIdx')), periodId: String(values.get('periodId')),
+                    startWeek: Number(values.get('startWeek')), weeks: Number(values.get('weeks'))
                 };
-
-                if (!lockData.cartName) { showAlert("請選擇一個 Cart。"); return; }
-                if (lockData.weeks < 1) { showAlert("持續週數必須至少 1 週。"); return; }
-
                 try {
-                    const newLocks = lockModal.lockId
-                        ? recurringLocks.map(l => l.id === lockModal.lockId ? lockData : l)
-                        : [...recurringLocks, lockData];
-
-                    await dbRefs.fb.setDoc(dbRefs.getDocRef('settings', 'main'), { recurringLocks: newLocks }, { merge: true });
-
-                    const cartRef = dbRefs.getDocRef('carts', lockData.cartName);
-                    await dbRefs.fb.runTransaction(dbRefs.db, async (transaction) => {
-                        const cartDoc = await transaction.get(cartRef);
-                        if (!cartDoc.exists()) return;
-                        const schedule = cartDoc.data().schedule || {};
-                        let changed = false;
-                        for (let w = lockData.startWeek; w < lockData.startWeek + lockData.weeks; w++) {
-                            const slotId = `w${w}_d${lockData.dayIdx}_p${lockData.periodId}`;
-                            if (schedule[slotId]) { delete schedule[slotId]; changed = true; }
+                    await dbRefs.fb.runTransaction(dbRefs.db, async transaction => {
+                        const settingsRef = dbRefs.getDocRef('settings', 'main');
+                        const settings = await transaction.get(settingsRef);
+                        const cart = await transaction.get(dbRefs.getDocRef('carts', lock.cartName));
+                        if (!settings.exists() || !cart.exists()) throw new Error('Equipment or settings no longer exist.');
+                        const existing = settings.data().recurringLocks || [];
+                        if (lockModal.lockId && !existing.some(item => item.id === lock.id)) throw new Error('This lock was already deleted.');
+                        const recurringLocks = lockModal.lockId ? existing.map(item => item.id === lock.id ? lock : item) : [...existing, lock];
+                        const lockedSlots = Core.lockIndex(recurringLocks, settings.data().semesterConfig.totalWeeks);
+                        for (let week = lock.startWeek; week < lock.startWeek + lock.weeks; week++) {
+                            if (Core.bookings(cart.data().schedule?.[`w${week}_d${lock.dayIdx}_p${lock.periodId}`]).length) throw new Error('This range contains reservations. Review and cancel them explicitly before applying a lock.');
                         }
-                        if (changed) transaction.update(cartRef, { schedule });
+                        transaction.update(settingsRef, { recurringLocks, lockedSlots });
                     });
-
-                    addLog(lockModal.lockId ? "Edit Lock" : "Add Lock", lockData.cartName, `${lockData.name} · Wk${lockData.startWeek}-${lockData.startWeek + lockData.weeks - 1} · ${currentDays[lockData.dayIdx] || `Day${lockData.dayIdx}`} P${lockData.periodId}`);
-                    setLockModal({ isOpen: false, lockId: null, data: null });
-                } catch (err) {
-                    console.error("Save lock error:", err);
-                    showAlert("儲存鎖定失敗，請稍後再試。");
-                }
+                    addLog(lockModal.lockId ? 'Edit Lock' : 'Add Lock', lock.cartName, lock.name);
+                    setLockModal({ isOpen: false });
+                } catch (error) { showAlert(error.message || 'Could not save the lock.'); }
             };
-
-            const deleteLock = (lockId) => {
+            const deleteLock = lockId => {
                 if (!requireAdmin()) return;
-                const lock = recurringLocks.find(l => l.id === lockId);
-                if (!lock) return;
-                showConfirm(`確定要刪除鎖定「${lock.name}」嗎？`, async () => {
+                showConfirm('Delete this recurring lock?', async () => {
                     if (!requireAdmin()) return;
                     try {
-                        const newLocks = recurringLocks.filter(l => l.id !== lockId);
-                        await dbRefs.fb.setDoc(dbRefs.getDocRef('settings', 'main'), { recurringLocks: newLocks }, { merge: true });
-                        addLog("Delete Lock", lock.cartName, `${lock.name} · Wk${lock.startWeek}-${lock.startWeek + lock.weeks - 1}`);
-                    } catch (err) {
-                        console.error("Delete lock error:", err);
-                        showAlert("刪除鎖定失敗，請稍後再試。");
-                    }
+                        await dbRefs.fb.runTransaction(dbRefs.db, async transaction => {
+                            const ref = dbRefs.getDocRef('settings', 'main');
+                            const settings = await transaction.get(ref);
+                            const recurringLocks = (settings.data().recurringLocks || []).filter(lock => lock.id !== lockId);
+                            transaction.update(ref, { recurringLocks, lockedSlots: Core.lockIndex(recurringLocks, settings.data().semesterConfig.totalWeeks) });
+                        });
+                        addLog('Delete Lock', 'System', lockId);
+                    } catch (error) { showAlert(error.message || 'Could not remove the lock.'); }
                 });
             };
 
@@ -922,11 +927,11 @@
                     return;
                 }
 
-                const isPastSlot = isSlotBeforeToday(selectedWeek, dayIdx);
+                const isPastSlot = isSlotBeforeToday(selectedWeek, dayIdx, periodId);
 
-                const isPastLimit = !isAdmin && (selectedWeek > currentRealWeek + (semesterConfig.maxAdvanceWeeks || 2));
+                const isPastLimit = !isAdmin && (selectedWeek > currentRealWeek + (semesterConfig.maxAdvanceWeeks ?? 2));
                 if (isPastLimit && !existingBooking) {
-                    showAlert(`⚠️ Booking Limit Exceeded\n\nTo ensure fairness, the system only allows bookings up to ${semesterConfig.maxAdvanceWeeks || 2} week(s) in advance.\nPlease try again closer to your desired date!`);
+                    showAlert(`⚠️ Booking Limit Exceeded\n\nTo ensure fairness, the system only allows bookings up to ${semesterConfig.maxAdvanceWeeks ?? 2} week(s) in advance.\nPlease try again closer to your desired date!`);
                     return;
                 }
 
@@ -946,6 +951,10 @@
                     }
 
                     if (isBatchMode) {
+                        if (batchSelection.length >= Core.MAX_BATCH && !batchSelection.some(slot => slot.slotId === slotId)) {
+                            showAlert('A batch can contain up to ' + Core.MAX_BATCH + ' slots.');
+                            return;
+                        }
                         setBatchSelection(prev => 
                             prev.some(s => s.slotId === slotId) 
                                 ? prev.filter(s => s.slotId !== slotId) 
@@ -963,8 +972,8 @@
                 const lock = getLockForSlot(selectedCart, selectedWeek, dayIdx, period.id);
                 const bookings = normalizeSlotBookings(cartData[selectedCart]?.schedule?.[slotId]);
                 const remaining = getSlotRemainingQuantity(selectedCart, slotId);
-                const isPast = isSlotBeforeToday(selectedWeek, dayIdx);
-                const beyondLimit = !isAdmin && selectedWeek > currentRealWeek + (semesterConfig.maxAdvanceWeeks || 2);
+                const isPast = isSlotBeforeToday(selectedWeek, dayIdx, period.id);
+                const beyondLimit = !isAdmin && selectedWeek > currentRealWeek + (semesterConfig.maxAdvanceWeeks ?? 2);
                 const canBook = canWriteReservations && semesterConfigLoaded && cartsLoaded && !dataError && remaining > 0 && (!isPast || isAdmin) && !beyondLimit && !isSaving;
                 const selected = batchSelection.some(slot => slot.slotId === slotId) ||
                     (bookingModal.isOpen && !bookingModal.isBatch && bookingModal.dayIdx === dayIdx && bookingModal.periodId === period.id);
@@ -1005,63 +1014,43 @@
                 );
             };
 
+            const mutateReservations = async (cartName, changes) => {
+                const { fb, db, getDocRef } = dbRefs;
+                const cartRef = getDocRef('carts', cartName);
+                const settingsRef = getDocRef('settings', 'main');
+                const logId = crypto.randomUUID();
+                return fb.runTransaction(db, async transaction => {
+                    const cart = await transaction.get(cartRef);
+                    const settings = await transaction.get(settingsRef);
+                    if (!cart.exists() || !settings.exists()) throw new Error('Equipment or settings no longer exist.');
+                    const update = Core.changeReservations(cart.data(), settings.data(), currentUser, changes.map(change => ({ ...change, cartName })), Date.now(), isAdmin);
+                    const lastMutation = { actorUid: currentUser.uid, at: fb.serverTimestamp(), logId, slotIds: update.slotIds, changes: update.changes };
+                    transaction.update(cartRef, { schedule: update.schedule, lastMutation });
+                    transaction.set(getDocRef('logs', logId), {
+                        actorUid: currentUser.uid, actorEmail: currentUser.email, createdAt: fb.serverTimestamp(),
+                        action: 'ReservationChange', cart: cartName, details: 'Reservation change',
+                        operator: currentUser.email, time: new Date().toISOString(),
+                        changes: update.changes, slotIds: update.slotIds
+                    });
+                });
+            };
+            const reservationError = error => {
+                console.error('Reservation failed:', error);
+                showAlert(error.code === 'permission-denied' ? 'The server rejected this change. Your access, the time window or slot availability may have changed. Refresh and try again.' : error.message || 'The change could not be saved.');
+            };
             const executeBookingTransaction = async (slotsToBook, bookingName, finalSubject, requestedQuantity) => {
-                if (!requireReservationWrite()) return;
-                if (bookingBusy.current || slotsToBook.length === 0) return;
+                if (!requireReservationWrite() || bookingBusy.current || !slotsToBook.length) return;
                 bookingBusy.current = true;
                 setIsSaving(true);
-                const cartRef = dbRefs.getDocRef('carts', selectedCart);
-                const quantity = getSafeQuantity(requestedQuantity, 1);
-
                 try {
-                    await dbRefs.fb.runTransaction(dbRefs.db, async (transaction) => {
-                        const cartDoc = await transaction.get(cartRef);
-                        if (!cartDoc.exists()) throw "CART_NOT_FOUND";
-
-                        const currentData = cartDoc.data();
-                        const currentSchedule = currentData.schedule || {};
-                        const capacity = getSafeQuantity(currentData.capacity, 1);
-
-                        for (const slot of slotsToBook) {
-                            if (getLockForSlot(selectedCart, selectedWeek, slot.dayIdx, slot.periodId)) {
-                                throw "SLOT_LOCKED";
-                            }
-                            const slotBookings = normalizeSlotBookings(currentSchedule[slot.slotId]);
-                            const usedQuantity = slotBookings.reduce((total, booking) => total + getBookingQuantity(booking), 0);
-                            if (usedQuantity + quantity > capacity) {
-                                throw "INSUFFICIENT_QUANTITY";
-                            }
-                            slotBookings.push({
-                                id: makeBookingId(),
-                                name: bookingName, email: currentUser.email, 
-                                className: finalSubject, ownerEmail: currentUser.email,
-                                quantity,
-                                createdAt: getTimestamp()
-                            });
-                            setSlotBookings(currentSchedule, slot.slotId, slotBookings);
-                        }
-                        transaction.update(cartRef, { schedule: currentSchedule });
-                    });
-
-                    const details = slotsToBook.length === 1 
-                        ? `Week ${selectedWeek} ${currentDays[slotsToBook[0].dayIdx]} P${slotsToBook[0].periodId} (${finalSubject}, ${quantity} devices)`
-                        : `Batch booked ${slotsToBook.length} slots for Week ${selectedWeek} (${finalSubject}, ${quantity} devices each)`;
-                    
-                    addLog("Add Booking", selectedCart, details);
-                    setBookingModal({ isOpen: false, dayIdx: null, periodId: null, existingBooking: null, isEditing: false, isBatch: false });
-                    setBatchSelection([]);
-                    setIsBatchMode(false);
-                    setToast(slotsToBook.length > 1 ? `${slotsToBook.length} reservations confirmed.` : 'Reservation confirmed.');
-                    
-                } catch (error) {
-                    if (error === "INSUFFICIENT_QUANTITY") showAlert("可借數量不足！你選的數量超過其中一個時段的剩餘台數，請調整數量後再試。");
-                    else if (error === "SLOT_LOCKED") showAlert("🔒 你選的時段中包含已被鎖定的格子，無法預約。");
-                    else if (error === "CART_NOT_FOUND") showAlert("找不到該設備，可能已被管理員刪除。");
-                    else showAlert("預約發生錯誤，請稍後檢查網路連線再試。");
-                } finally {
-                    bookingBusy.current = false;
-                    setIsSaving(false);
-                }
+                    await mutateReservations(selectedCart, slotsToBook.map(slot => ({
+                        slotId: slot.slotId, bookingId: crypto.randomUUID(), operation: 'create',
+                        booking: { name: bookingName, className: finalSubject, quantity: Number(requestedQuantity) }
+                    })));
+                    setBookingModal({ isOpen: false }); setBatchSelection([]); setIsBatchMode(false);
+                    setToast(slotsToBook.length > 1 ? slotsToBook.length + ' reservations confirmed.' : 'Reservation confirmed.');
+                } catch (error) { reservationError(error); }
+                finally { bookingBusy.current = false; setIsSaving(false); }
             };
 
             const checkConflictsAndSubmit = async () => {
@@ -1069,7 +1058,7 @@
                 if (bookingBusy.current) return;
                 const bookingName = bookForm.name.trim();
                 const finalSubject = bookForm.subject.trim();
-                const requestedQuantity = getSafeQuantity(bookForm.quantity, 1);
+                const requestedQuantity = Number(bookForm.quantity);
                 const slotsToBook = bookingModal.isBatch ? batchSelection : [{ dayIdx: bookingModal.dayIdx, periodId: bookingModal.periodId, slotId: `w${selectedWeek}_d${bookingModal.dayIdx}_p${bookingModal.periodId}` }];
 
                 if (!bookingName) {
@@ -1111,50 +1100,16 @@
             // 已被取消時給予明確的錯誤訊息而不是靜默失敗。
             // =================================================================
             const cancelBooking = async () => {
-                if (!requireReservationWrite()) return;
-                if (bookingBusy.current) return;
-                bookingBusy.current = true;
-                setIsSaving(true);
-                const slotId = `w${selectedWeek}_d${bookingModal.dayIdx}_p${bookingModal.periodId}`;
-                const cartRef = dbRefs.getDocRef('carts', selectedCart);
-                
+                if (!requireReservationWrite() || bookingBusy.current) return;
+                bookingBusy.current = true; setIsSaving(true);
                 try {
-                    let cancelledName = '';
-                    await dbRefs.fb.runTransaction(dbRefs.db, async (transaction) => {
-                        const cartDoc = await transaction.get(cartRef);
-                        if (!cartDoc.exists()) throw "CART_NOT_FOUND";
-                        
-                        const currentSchedule = cartDoc.data().schedule || {};
-                        if (!currentSchedule[slotId]) throw "ALREADY_CANCELLED";
-                        const slotBookings = normalizeSlotBookings(currentSchedule[slotId]);
-                        const bookingIndex = findBookingIndex(slotBookings, bookingModal.existingBooking?.id);
-                        if (bookingIndex === -1) throw "ALREADY_CANCELLED";
-                        const targetBooking = slotBookings[bookingIndex];
-                        
-                        // 非管理員只能取消自己的預約
-                        if (!isAdmin && targetBooking.ownerEmail !== currentUser.email) {
-                            throw "NOT_OWNER";
-                        }
-                        
-                        cancelledName = `${targetBooking.name} (${getBookingQuantity(targetBooking)} devices)`;
-                        slotBookings.splice(bookingIndex, 1);
-                        setSlotBookings(currentSchedule, slotId, slotBookings);
-                        transaction.update(cartRef, { schedule: currentSchedule });
-                    });
-
-                    const actionName = isAdmin ? "Force Cancel" : "Cancel Booking";
-                    addLog(actionName, selectedCart, `Week ${selectedWeek} ${currentDays[bookingModal.dayIdx]} P${bookingModal.periodId} (${cancelledName})`);
-                    setBookingModal({ isOpen: false });
-                    setToast('Reservation cancelled.');
-                } catch (error) {
-                    if (error === "ALREADY_CANCELLED") showAlert("這筆預約已經被取消了。");
-                    else if (error === "NOT_OWNER") showAlert("你只能取消自己的預約。");
-                    else if (error === "CART_NOT_FOUND") showAlert("找不到該設備。");
-                    else showAlert("取消失敗，請稍後再試。");
-                } finally {
-                    bookingBusy.current = false;
-                    setIsSaving(false);
-                }
+                    await mutateReservations(selectedCart, [{
+                        slotId: `w${selectedWeek}_d${bookingModal.dayIdx}_p${bookingModal.periodId}`,
+                        bookingId: bookingModal.existingBooking.id, operation: 'delete'
+                    }]);
+                    setBookingModal({ isOpen: false }); setToast('Reservation cancelled.');
+                } catch (error) { reservationError(error); }
+                finally { bookingBusy.current = false; setIsSaving(false); }
             };
 
             const handleEditClick = () => {
@@ -1169,77 +1124,17 @@
             };
 
             const updateBooking = async () => {
-                if (!requireReservationWrite()) return;
-                if (bookingBusy.current) return;
-                const slotId = `w${selectedWeek}_d${bookingModal.dayIdx}_p${bookingModal.periodId}`;
-                const finalSubject = editBookForm.subject.trim();
-                const updatedName = editBookForm.name.trim();
-                const requestedQuantity = getSafeQuantity(editBookForm.quantity, 1);
-                const cartRef = dbRefs.getDocRef('carts', selectedCart);
-
-                if (!updatedName) {
-                    showAlert("Please enter a name.");
-                    return;
-                }
-
-                if (!finalSubject) {
-                    showAlert("Please enter a subject.");
-                    return;
-                }
-
-                bookingBusy.current = true;
-                setIsSaving(true);
+                if (!requireReservationWrite() || bookingBusy.current) return;
+                bookingBusy.current = true; setIsSaving(true);
                 try {
-                    await dbRefs.fb.runTransaction(dbRefs.db, async (transaction) => {
-                        const cartDoc = await transaction.get(cartRef);
-                        if (!cartDoc.exists()) throw "CART_NOT_FOUND";
-
-                        const currentData = cartDoc.data();
-                        const currentSchedule = currentData.schedule || {};
-                        const capacity = getSafeQuantity(currentData.capacity, 1);
-
-                        if (!currentSchedule[slotId]) {
-                            throw "SLOT_NOT_FOUND"; 
-                        }
-                        const slotBookings = normalizeSlotBookings(currentSchedule[slotId]);
-                        const bookingIndex = findBookingIndex(slotBookings, bookingModal.existingBooking?.id);
-                        if (bookingIndex === -1) throw "SLOT_NOT_FOUND";
-                        if (!isAdmin && slotBookings[bookingIndex].ownerEmail !== currentUser.email) {
-                            throw "NOT_OWNER";
-                        }
-
-                        const originalQuantity = getBookingQuantity(slotBookings[bookingIndex]);
-                        const usedWithoutThisBooking = slotBookings.reduce((total, booking) => total + getBookingQuantity(booking), 0) - originalQuantity;
-                        if (usedWithoutThisBooking + requestedQuantity > capacity) {
-                            throw "INSUFFICIENT_QUANTITY";
-                        }
-
-                        slotBookings[bookingIndex] = { 
-                            ...slotBookings[bookingIndex],
-                            name: updatedName, 
-                            email: isAdmin ? editBookForm.email : slotBookings[bookingIndex].email, 
-                            className: finalSubject, 
-                            ownerEmail: isAdmin ? editBookForm.email : slotBookings[bookingIndex].ownerEmail,
-                            quantity: requestedQuantity
-                        };
-                        setSlotBookings(currentSchedule, slotId, slotBookings);
-                        
-                        transaction.update(cartRef, { schedule: currentSchedule });
-                    });
-
-                    addLog(isAdmin ? "Admin Edit" : "Edit Booking", selectedCart, `Week ${selectedWeek} ${currentDays[bookingModal.dayIdx]} P${bookingModal.periodId} (Updated: ${updatedName}, ${requestedQuantity} devices)`);
-                    setBookingModal({ isOpen: false, dayIdx: null, periodId: null, existingBooking: null, isEditing: false, isBatch: false });
-                    setToast('Reservation updated.');
-                } catch (error) {
-                    if (error === "SLOT_NOT_FOUND") showAlert("這筆預約似乎已經被使用者手動取消了！請重新確認設備狀態。");
-                    else if (error === "INSUFFICIENT_QUANTITY") showAlert("更新後的數量超過此時段可用台數。");
-                    else if (error === "NOT_OWNER") showAlert("你只能修改自己的預約。");
-                    else if (error === "CART_NOT_FOUND") showAlert("找不到該設備。");
-                    else showAlert("更新失敗，請稍後再試。");
-                } finally {
-                    bookingBusy.current = false;
-                    setIsSaving(false);
-                }
+                    await mutateReservations(selectedCart, [{
+                        slotId: `w${selectedWeek}_d${bookingModal.dayIdx}_p${bookingModal.periodId}`,
+                        bookingId: bookingModal.existingBooking.id, operation: 'update',
+                        booking: { name: editBookForm.name, className: editBookForm.subject, quantity: Number(editBookForm.quantity) }
+                    }]);
+                    setBookingModal({ isOpen: false }); setToast('Reservation updated.');
+                } catch (error) { reservationError(error); }
+                finally { bookingBusy.current = false; setIsSaving(false); }
             };
 
             const saveCartEdit = async (e) => {
@@ -1249,7 +1144,7 @@
                 const oldName = editCartModal.cartName;
                 const newName = formData.get('name').trim();
                 const capacity = Number(formData.get('capacity'));
-                if (!newName || newName.includes('/') || !Number.isSafeInteger(capacity) || capacity < 1) {
+                if (!newName || newName.includes('/') || ['__proto__', 'constructor', 'prototype'].includes(newName) || !Number.isSafeInteger(capacity) || capacity < 1 || capacity > 1000) {
                     showAlert('Enter a valid equipment name and a positive whole-number capacity.');
                     return;
                 }
@@ -1262,7 +1157,7 @@
                         const sourceRef = oldName ? dbRefs.getDocRef('carts', oldName) : null;
                         const source = oldName === newName ? target : sourceRef ? await transaction.get(sourceRef) : null;
                         if (oldName && !source.exists()) throw 'CART_NOT_FOUND';
-                        const latestData = source?.data() || { schedule: {}, order: Object.keys(cartData).length };
+                        const latestData = source?.data() || { securityVersion: 2, schedule: {}, order: Object.keys(cartData).length };
                         const reserved = Math.max(0, ...Object.values(latestData.schedule || {}).map(getSlotUsedQuantity));
                         if (capacity < reserved) throw 'CAPACITY_BELOW_BOOKED';
                         const renaming = oldName && oldName !== newName;
@@ -1276,7 +1171,8 @@
                             transaction.delete(sourceRef);
                             const locks = settings?.data()?.recurringLocks;
                             if (Array.isArray(locks) && locks.some(lock => lock.cartName === oldName)) {
-                                transaction.update(settingsRef, { recurringLocks: locks.map(lock => lock.cartName === oldName ? { ...lock, cartName: newName } : lock) });
+                                const nextLocks = locks.map(lock => lock.cartName === oldName ? { ...lock, cartName: newName } : lock);
+                                transaction.update(settingsRef, { recurringLocks: nextLocks, lockedSlots: Core.lockIndex(nextLocks, settings.data().semesterConfig.totalWeeks) });
                             }
                         }
                     });
@@ -1345,51 +1241,24 @@
             // 🔧 FIX [衝突]: cancelBookingFromList 也改用 runTransaction
             const cancelBookingFromList = (cartName, slotId, className, bookingId) => {
                 if (!requireReservationWrite()) return;
-                showConfirm(`Are you sure you want to cancel this booking for ${cartName}?`, async () => {
-                    if (!requireReservationWrite()) return;
-                    const cartRef = dbRefs.getDocRef('carts', cartName);
-                    
+                showConfirm('Cancel this reservation for ' + cartName + '?', async () => {
+                    if (!requireReservationWrite() || bookingBusy.current) return;
+                    bookingBusy.current = true; setIsSaving(true);
                     try {
-                        await dbRefs.fb.runTransaction(dbRefs.db, async (transaction) => {
-                            const cartDoc = await transaction.get(cartRef);
-                            if (!cartDoc.exists()) throw "CART_NOT_FOUND";
-                            
-                            const currentSchedule = cartDoc.data().schedule || {};
-                            if (!currentSchedule[slotId]) throw "ALREADY_CANCELLED";
-                            const slotBookings = normalizeSlotBookings(currentSchedule[slotId]);
-                            const bookingIndex = bookingId
-                                ? findBookingIndex(slotBookings, bookingId)
-                                : slotBookings.findIndex(booking => booking.ownerEmail === currentUser.email && booking.className === className);
-                            if (bookingIndex === -1) throw "ALREADY_CANCELLED";
-                            const targetBooking = slotBookings[bookingIndex];
-                            
-                            if (!isAdmin && targetBooking.ownerEmail !== currentUser.email) {
-                                throw "NOT_OWNER";
-                            }
-                            
-                            slotBookings.splice(bookingIndex, 1);
-                            setSlotBookings(currentSchedule, slotId, slotBookings);
-                            transaction.update(cartRef, { schedule: currentSchedule });
-                        });
-                        
-                        const match = slotId.match(/w(\d+)_d(\d+)_p(\w+)/);
-                        if (match) addLog("Cancel Booking", cartName, `W${match[1]} ${currentDays[parseInt(match[2])]} P${match[3]} (${className})`);
-                    } catch (error) {
-                        if (error === "ALREADY_CANCELLED") showAlert("這筆預約已經被取消了。");
-                        else if (error === "NOT_OWNER") showAlert("你只能取消自己的預約。");
-                        else if (error === "CART_NOT_FOUND") showAlert("找不到該設備。");
-                        else showAlert("取消失敗，請稍後再試。");
-                    }
+                        await mutateReservations(cartName, [{ slotId, bookingId, operation: 'delete' }]);
+                        setToast('Reservation cancelled.');
+                    } catch (error) { reservationError(error); }
+                    finally { bookingBusy.current = false; setIsSaving(false); }
                 });
             };
 
             const upcomingBookings = useMemo(() =>
-                allMyBookings.filter(b => !isSlotBeforeToday(b.week, b.dayIdx)),
-                [allMyBookings, semesterConfig.startDate, currentRealWeek]
+                allMyBookings.filter(b => !isSlotBeforeToday(b.week, b.dayIdx, b.periodId)),
+                [allMyBookings, semesterConfig.startDate, currentRealWeek, now]
             );
             const historyBookings = useMemo(() =>
-                allMyBookings.filter(b => isSlotBeforeToday(b.week, b.dayIdx)),
-                [allMyBookings, semesterConfig.startDate, currentRealWeek]
+                allMyBookings.filter(b => isSlotBeforeToday(b.week, b.dayIdx, b.periodId)),
+                [allMyBookings, semesterConfig.startDate, currentRealWeek, now]
             );
             const displayedBookings = myBookingsTab === 'upcoming' ? upcomingBookings : historyBookings;
             const openMyBooking = booking => {
@@ -1398,7 +1267,7 @@
                 selectWeek(booking.week);
                 selectEquipment(booking.cartName);
                 setMobileDay(booking.dayIdx);
-                setBookingModal({ isOpen: true, dayIdx: booking.dayIdx, periodId: Number(booking.periodId), existingBooking: existing, isEditing: false, isBatch: false, isPast: isSlotBeforeToday(booking.week, booking.dayIdx) });
+                setBookingModal({ isOpen: true, dayIdx: booking.dayIdx, periodId: Number(booking.periodId), existingBooking: existing, isEditing: false, isBatch: false, isPast: isSlotBeforeToday(booking.week, booking.dayIdx, booking.periodId) });
             };
             const renderMyBookingSlot = (dayIdx, period) => <div className="slot"><div className="slot-events">
                 {displayedBookings.filter(booking => booking.week === selectedWeek && booking.dayIdx === dayIdx && Number(booking.periodId) === period.id).map(booking =>
@@ -1536,15 +1405,15 @@
                                     {weeksArray.map(week => <option key={week} value={week}>Week {week}</option>)}
                                 </select>
                                 <button className="ui-button this-week" disabled={isSaving || !semesterConfigLoaded} onClick={() => selectWeek(currentRealWeek)}>This week</button>
-                                {currentView === 'schedule' && canWriteReservations && <label className="toggle-label"><input type="checkbox" checked={isBatchMode} disabled={isSaving} onChange={event => { closeBooking(); setIsBatchMode(event.target.checked); setBatchSelection([]); }} />Batch booking</label>}
+                                {currentView === 'schedule' && canWriteReservations && Core.MAX_BATCH > 1 && <label className="toggle-label"><input type="checkbox" checked={isBatchMode} disabled={isSaving} onChange={event => { closeBooking(); setIsBatchMode(event.target.checked); setBatchSelection([]); }} />Batch booking</label>}
                             </div>
                             {currentView === 'schedule' && <div className="legend" aria-label="Booking status legend">
                                 <span><i />Available</span><span><i aria-hidden="true" className="mine" />My booking</span><span><i aria-hidden="true" className="booked" />Booked</span><span><i aria-hidden="true" className="locked" />Locked</span>
                             </div>}
                         </div>
                         {dataError && <div className="status-banner error" role="alert"><Icon name="circle-exclamation" /><span>{dataError}</span><button className="ui-button" onClick={() => window.location.reload()}>Retry</button></div>}
-                        {RESERVATIONS_PAUSED && <div className="status-banner" role="status"><Icon name="lock" /><span>{isAdmin ? 'Incident protection: teacher reservations are paused. Preserve a backup before repairing data.' : 'Reservations are temporarily read-only. Booking changes are paused.'}</span></div>}
-                        {!isAdmin && selectedWeek > currentRealWeek + (semesterConfig.maxAdvanceWeeks || 2) && <div className="status-banner"><Icon name="lock" /><span>Booking opens up to {semesterConfig.maxAdvanceWeeks || 2} weeks in advance.</span></div>}
+                        {!canWriteReservations && <div className="status-banner" role="status"><Icon name="lock" /><span>{isAdmin ? 'Bookings paused. Review existing data and publish the new Firestore Rules before upgrading.' : 'Reservations are temporarily read-only. Please contact the administrator.'}</span>{isAdmin && !securityReady && <button className="ui-button" disabled={isSaving || !cartsLoaded || !semesterConfigLoaded} onClick={upgradeSecurity}><Icon name="shield-halved" />Upgrade and reopen</button>}</div>}
+                        {!isAdmin && selectedWeek > currentRealWeek + (semesterConfig.maxAdvanceWeeks ?? 2) && <div className="status-banner"><Icon name="lock" /><span>Booking opens up to {semesterConfig.maxAdvanceWeeks ?? 2} weeks in advance.</span></div>}
                         <main className={currentView === 'schedule' ? 'schedule-view' : currentView === 'print' ? 'print-workspace' : 'legacy-view'}>
                         
                         {currentView === 'my-bookings' && (
@@ -1569,7 +1438,7 @@
                                             <span className="booking-list-quantity">{booking.quantity} devices</span>
                                             <div className="booking-list-actions">
                                                 <IconButton label={`View reservation for ${booking.cartName}`} name="arrow-up-right-from-square" onClick={() => openMyBooking(booking)} />
-                                                {canWriteReservations && (isAdmin || !isSlotBeforeToday(booking.week, booking.dayIdx)) && <IconButton label={`Cancel reservation for ${booking.cartName}`} name="trash-can" onClick={() => cancelBookingFromList(booking.cartName, booking.slotId, booking.className, booking.bookingId)} />}
+                                                {canWriteReservations && (isAdmin || !isSlotBeforeToday(booking.week, booking.dayIdx, booking.periodId)) && <IconButton label={`Cancel reservation for ${booking.cartName}`} name="trash-can" onClick={() => cancelBookingFromList(booking.cartName, booking.slotId, booking.className, booking.bookingId)} />}
                                             </div>
                                         </article>)}
                                     </div>
@@ -1761,11 +1630,12 @@
                                                     <h3 className="text-2xl font-extrabold text-duo-text mb-6 border-b-2 border-duo-grayBorder pb-4">Semester Config</h3>
                                                     <div className="bg-duo-grayLight border-2 border-duo-grayBorder rounded-[2rem] p-6 mb-8">
                                                         <form onSubmit={handleSemesterConfigSave} className="space-y-4">
+                                                            <label className="toggle-label"><input type="checkbox" checked={securityReady && securitySettings?.reservationsEnabled === true} disabled={!securityReady || isSaving} onChange={handleReservationsToggle} />Reservations open</label>
                                                             <label className="toggle-label"><input type="checkbox" checked={allowSaturday} onChange={handleSaturdayToggle} />Allow Saturday booking</label>
                                                             <div><label className="block text-xs font-extrabold text-gray-500 uppercase tracking-wider mb-2">Start Date (Week 1)</label><input required type="date" value={tempSemesterConfig.startDate} onChange={e => setTempSemesterConfig({...tempSemesterConfig, startDate: e.target.value})} className="w-full px-4 py-3 bg-white border-2 border-duo-grayBorder rounded-xl focus:border-duo-blue outline-none font-bold text-duo-text" /></div>
                                                             <div className="grid grid-cols-2 gap-4">
                                                                 <div><label className="block text-xs font-extrabold text-gray-500 uppercase tracking-wider mb-2">Total Weeks</label><input required type="number" min="1" max="52" value={tempSemesterConfig.totalWeeks} onChange={e => setTempSemesterConfig({...tempSemesterConfig, totalWeeks: Number(e.target.value)})} className="w-full px-4 py-3 bg-white border-2 border-duo-grayBorder rounded-xl focus:border-duo-blue outline-none font-bold text-duo-text" /></div>
-                                                                <div><label className="block text-xs font-extrabold text-gray-500 uppercase tracking-wider mb-2">Max Advance (Weeks)</label><input required type="number" min="1" max="52" value={tempSemesterConfig.maxAdvanceWeeks || 2} onChange={e => setTempSemesterConfig({...tempSemesterConfig, maxAdvanceWeeks: Number(e.target.value)})} title="老師最多可以提前幾週預約" className="w-full px-4 py-3 bg-white border-2 border-duo-grayBorder rounded-xl focus:border-duo-blue outline-none font-bold text-duo-text" /></div>
+                                                                <div><label className="block text-xs font-extrabold text-gray-500 uppercase tracking-wider mb-2">Max Advance (Weeks)</label><input required type="number" min="0" max="52" value={tempSemesterConfig.maxAdvanceWeeks ?? 2} onChange={e => setTempSemesterConfig({...tempSemesterConfig, maxAdvanceWeeks: Number(e.target.value)})} title="老師最多可以提前幾週預約" className="w-full px-4 py-3 bg-white border-2 border-duo-grayBorder rounded-xl focus:border-duo-blue outline-none font-bold text-duo-text" /></div>
                                                             </div>
                                                             <button type="submit" className="w-full mt-2 bg-duo-green text-white font-extrabold uppercase py-3 rounded-2xl shadow-duo-green active:shadow-none active:translate-y-[4px] transition-all tracking-wider">Save Config</button>
                                                         </form>
